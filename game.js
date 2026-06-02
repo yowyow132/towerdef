@@ -2946,3 +2946,40 @@ window.onload = () => {
     // 預設進入主選單
     switchView('home-view');
 };
+
+
+// ==========================================
+// 8. 手機觸控兼容 (Touch to Mouse Adapter)
+// ==========================================
+function touchToMouse(e) {
+    if (e.touches && e.touches.length > 1) return; // 忽略多指觸控
+    let touch = e.changedTouches[0];
+    let type = "";
+    
+    if (e.type === 'touchstart') type = 'mousedown';
+    else if (e.type === 'touchmove') type = 'mousemove';
+    else if (e.type === 'touchend') type = 'mouseup';
+    
+    let mouseEvent = new MouseEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        view: window,
+        clientX: touch.clientX,
+        clientY: touch.clientY,
+        screenX: touch.screenX,
+        screenY: touch.screenY
+    });
+    
+    // 派發模擬的滑鼠事件
+    touch.target.dispatchEvent(mouseEvent);
+    
+    // 如果正在拖曳防禦塔，禁止螢幕跟著滾動
+    if (e.type === 'touchmove' && typeof dragInfo !== 'undefined' && dragInfo !== null) {
+        e.preventDefault();
+    }
+}
+
+// 綁定觸控事件
+document.addEventListener('touchstart', touchToMouse, {passive: false});
+document.addEventListener('touchmove', touchToMouse, {passive: false});
+document.addEventListener('touchend', touchToMouse, {passive: false});

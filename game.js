@@ -2954,3 +2954,26 @@ window.onload = () => {
 let style = document.createElement('style');
 style.innerHTML = 'canvas, #game-container, .bench-slot { touch-action: none; }';
 document.head.appendChild(style);
+
+// ==========================================
+// 9. 背景音樂控制 (BGM Control)
+// ==========================================
+let bgMusicStarted = false;
+function startBGM() {
+    if (bgMusicStarted) return;
+    const bgm = document.getElementById('bg-music');
+    if (bgm) {
+        bgm.volume = 0.4; // 設定音量為 40% 避免太大聲
+        bgm.play().then(() => {
+            bgMusicStarted = true;
+            // 成功播放後，就可以把這個監聽器移除了
+            document.removeEventListener('pointerdown', startBGM);
+            document.removeEventListener('click', startBGM);
+        }).catch(err => {
+            // 瀏覽器仍然阻擋，等待下一次點擊
+            console.log("Waiting for user interaction to play BGM...");
+        });
+    }
+}
+document.addEventListener('pointerdown', startBGM);
+document.addEventListener('click', startBGM);

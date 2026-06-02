@@ -1401,7 +1401,7 @@ function initDragAndDrop() {
     let sellZone = document.getElementById('sell-zone');
 
     // 當滑鼠在備戰格按住時，啟動拖拽
-    container.addEventListener('mousedown', function (e) {
+    container.addEventListener('pointerdown', function (e) {
         if (gameState.lives <= 0) return;
 
         let slot = e.target.closest('.bench-slot');
@@ -1473,7 +1473,7 @@ function initDragAndDrop() {
         document.getElementById('sell-price-preview').innerText = `+$${tower.sellPrice}`;
     }
 
-    document.addEventListener('mousemove', function (e) {
+    document.addEventListener('pointermove', function (e) {
         if (!dragInfo) return;
 
         // 更新浮動元素位置
@@ -1493,7 +1493,7 @@ function initDragAndDrop() {
         }
     });
 
-    document.addEventListener('mouseup', function (e) {
+    document.addEventListener('pointerup', function (e) {
         if (!dragInfo) return;
 
         let floatEl = document.getElementById('drag-floating');
@@ -2948,38 +2948,9 @@ window.onload = () => {
 };
 
 
-// ==========================================
-// 8. 手機觸控兼容 (Touch to Mouse Adapter)
-// ==========================================
-function touchToMouse(e) {
-    if (e.touches && e.touches.length > 1) return; // 忽略多指觸控
-    let touch = e.changedTouches[0];
-    let type = "";
-    
-    if (e.type === 'touchstart') type = 'mousedown';
-    else if (e.type === 'touchmove') type = 'mousemove';
-    else if (e.type === 'touchend') type = 'mouseup';
-    
-    let mouseEvent = new MouseEvent(type, {
-        bubbles: true,
-        cancelable: true,
-        view: window,
-        clientX: touch.clientX,
-        clientY: touch.clientY,
-        screenX: touch.screenX,
-        screenY: touch.screenY
-    });
-    
-    // 派發模擬的滑鼠事件
-    touch.target.dispatchEvent(mouseEvent);
-    
-    // 如果正在拖曳防禦塔，禁止螢幕跟著滾動
-    if (e.type === 'touchmove' && typeof dragInfo !== 'undefined' && dragInfo !== null) {
-        e.preventDefault();
-    }
-}
 
-// 綁定觸控事件
-document.addEventListener('touchstart', touchToMouse, {passive: false});
-document.addEventListener('touchmove', touchToMouse, {passive: false});
-document.addEventListener('touchend', touchToMouse, {passive: false});
+
+// 確保觸控不會引發預設的滑動行為
+let style = document.createElement('style');
+style.innerHTML = 'canvas, #game-container, .bench-slot { touch-action: none; }';
+document.head.appendChild(style);

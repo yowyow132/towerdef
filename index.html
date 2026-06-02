@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Merge TD - 融合塔防遊戲原型</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Noto+Sans+TC:wght@400;700;900&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="app-container">
+        <!-- 主選單視圖 -->
+        <div id="home-view" class="view-screen">
+            <h1 class="game-title" style="font-size: 48px; margin-top: 60px;">MERGE <span class="neon-text">TD</span></h1>
+            <div class="home-stats" style="text-align: center; font-size: 24px; color: #facc15; margin-bottom: 40px; text-shadow: 0 0 10px rgba(250, 204, 21, 0.5);">
+                🪙 <span id="home-coins">0</span>
+            </div>
+            <div class="home-menu" style="display: flex; flex-direction: column; gap: 15px; width: 300px; margin: 0 auto;">
+                <button class="action-btn glow-btn" onclick="switchView('battle-view'); initBattle();" style="padding: 15px; font-size: 18px;">⚔️ 前往戰鬥 (第一關)</button>
+                <button class="action-btn" onclick="switchView('shop-view'); renderShop();" style="padding: 15px; font-size: 18px; border-color: rgba(255,255,255,0.2);">🛒 商店與抽卡</button>
+                <button class="action-btn" onclick="switchView('backpack-view'); renderBackpack();" style="padding: 15px; font-size: 18px; border-color: rgba(255,255,255,0.2);">🎒 背包與升級</button>
+                <button class="action-btn" onclick="switchView('encyclopedia-view'); renderEncyclopedia();" style="padding: 15px; font-size: 18px; border-color: rgba(255,255,255,0.2);">📖 遊戲圖鑑</button>
+            </div>
+        </div>
+
+        <!-- 戰鬥視圖 (原本的遊戲) -->
+        <div id="battle-view" class="view-screen hidden">
+            <div id="battle-header-nav" style="padding: 10px; background: rgba(15,15,25,0.9); border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: flex-start; z-index: 10;">
+                <button class="action-btn" onclick="quitBattle()" style="width: auto; padding: 5px 15px; font-size: 14px; background: rgba(239, 68, 68, 0.2); border-color: rgba(239, 68, 68, 0.5); color: #fca5a5;">⬅ 退回主選單</button>
+            </div>
+            <div id="game-container">
+        <!-- 頂部資訊欄 -->
+        <header id="game-header">
+            <h1 class="game-title">MERGE <span class="neon-text">TD</span></h1>
+            <div id="stats-panel">
+                <div class="stat-box" id="stat-wave">
+                    <span class="stat-label">WAVE</span>
+                    <span class="stat-value">1</span>
+                </div>
+                <div class="stat-box" id="stat-gold">
+                    <span class="stat-label">GOLD</span>
+                    <span class="stat-value">250</span>
+                </div>
+                <div class="stat-box" id="stat-hp">
+                    <span class="stat-label">LIVES</span>
+                    <span class="stat-value">20</span>
+                </div>
+                <div class="stat-box" id="stat-slots">
+                    <span class="stat-label">SLOTS</span>
+                    <span class="stat-value">4 / 12</span>
+                </div>
+            </div>
+            <div id="header-right" style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
+                <div id="speed-controls">
+                    <button class="ctrl-btn active" id="btn-speed-1">1x</button>
+                    <button class="ctrl-btn" id="btn-speed-2">2x</button>
+                    <button class="ctrl-btn" id="btn-speed-3">3x</button>
+                    <button class="ctrl-btn" id="btn-pause">⏸</button>
+                </div>
+                <div id="wave-controls" style="display: flex; gap: 6px;">
+                    <button class="ctrl-btn" id="btn-next-wave" style="border: 1px solid rgba(167, 139, 250, 0.4); color: #c084fc;">⏩ 下一波</button>
+                    <button class="ctrl-btn" id="btn-auto-wave" style="border: 1px solid rgba(255, 255, 255, 0.08); color: var(--text-secondary);">🔄 自動下波</button>
+                </div>
+            </div>
+        </header>
+
+        <!-- 遊戲主體區（戰場） -->
+        <main id="game-body">
+            <div id="canvas-wrapper">
+                <canvas id="game-canvas" width="800" height="480"></canvas>
+                <div id="game-overlay" class="hidden">
+                    <div id="overlay-content">
+                        <h2 id="overlay-title">遊戲結束</h2>
+                        <p id="overlay-subtitle">您成功防守了 0 波攻勢！</p>
+                        <button id="btn-restart" class="action-btn glow-btn">重新開始</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- 底部操作與備戰區 -->
+        <footer id="game-footer">
+            <!-- 備戰區與垃圾桶 -->
+            <div id="bench-and-sell-container">
+                <div id="bench-wrapper">
+                    <h3>備戰區 (BENCH)</h3>
+                    <div id="bench-grid">
+                        <div class="bench-slot" data-index="0"></div>
+                        <div class="bench-slot" data-index="1"></div>
+                        <div class="bench-slot" data-index="2"></div>
+                        <div class="bench-slot" data-index="3"></div>
+                        <div class="bench-slot" data-index="4"></div>
+                        <div class="bench-slot" data-index="5"></div>
+                    </div>
+                </div>
+
+                <div id="sell-zone" class="sell-inactive">
+                    <div class="sell-icon">🗑️</div>
+                    <span class="sell-text">拖曳至此出售<br><span id="sell-price-preview">半價回收</span></span>
+                </div>
+            </div>
+
+            <!-- 控制面板（召喚 + 工具按鈕） -->
+            <div id="action-panel">
+                <div class="action-group">
+                    <button class="action-btn summon-btn" id="btn-summon">
+                        <span class="btn-title" id="summon-title-label">召喚 Lv.1 塔</span>
+                        <span class="btn-cost" id="summon-cost-label">🪙 50</span>
+                    </button>
+                    <button class="action-btn summon-btn" id="btn-upgrade-summon-lvl" style="background: linear-gradient(135deg, rgba(236, 72, 153, 0.15) 0%, rgba(219, 39, 119, 0.15) 100%); border-color: rgba(236, 72, 153, 0.3);">
+                        <span class="btn-title" id="up-summon-title-label">提升召喚等級</span>
+                        <span class="btn-cost" id="up-summon-cost-label">🪙 200</span>
+                    </button>
+                    <button class="action-btn unlock-btn" id="btn-unlock-slot">
+                        <span class="btn-title">解鎖上陣格</span>
+                        <span class="btn-cost" id="unlock-cost-label">🪙 100</span>
+                    </button>
+                    <button class="action-btn merge-btn" id="btn-merge-all">
+                        <span class="btn-title">一鍵合成</span>
+                        <span class="btn-cost">🔀 AUTO</span>
+                    </button>
+                    <button class="action-btn deploy-btn" id="btn-deploy-all">
+                        <span class="btn-title">一鍵上場</span>
+                        <span class="btn-cost">⚡ AUTO</span>
+                    </button>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+
+    <!-- 天賦抉擇 Overlay -->
+    <div id="talent-overlay" class="hidden">
+        <div id="talent-overlay-panel">
+            <h2 id="talent-overlay-title">🔮 命運的天賦抉擇 🔮</h2>
+            <p id="talent-overlay-subtitle">每 3 波可獲得一次天賦抉擇。請選擇一個天賦：</p>
+            <div id="talent-cards-container">
+                <!-- 由 JavaScript 動態生成卡片 -->
+            </div>
+            <div id="talent-reroll-container">
+                <button id="btn-talent-reroll" class="action-btn">
+                    <span>🔄 重置天賦</span>
+                    <span id="talent-reroll-count" style="font-size: 12px; color: var(--text-secondary);">剩餘 2 次</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    </div> <!-- End of battle-view -->
+
+    <!-- 商店視圖 -->
+    <div id="shop-view" class="view-screen hidden">
+        <div class="view-header">
+            <button class="action-btn" style="width:auto; padding: 5px 15px;" onclick="switchView('home-view')">⬅ 返回</button>
+            <h2 class="view-title">商店與抽卡</h2>
+            <div class="view-coins" style="color: #facc15; font-size: 20px; font-weight: bold;">🪙 <span id="shop-coins">0</span></div>
+        </div>
+        <div class="view-content shop-content" style="padding: 20px; overflow-y: auto; height: calc(100vh - 60px);">
+            <div class="gacha-section" style="background: rgba(255,255,255,0.05); padding: 20px; border-radius: 12px; text-align: center; margin-bottom: 30px; border: 1px solid rgba(167, 139, 250, 0.3);">
+                <h3 style="color: #c084fc; margin-bottom: 10px;">轉盤抽卡 (500 🪙)</h3>
+                <p style="color: var(--text-secondary); font-size: 14px; margin-bottom: 20px;">機率：普通(N) 50% | 稀有(R) 30% | 史詩(SR) 15% | 傳說(UR) 5%</p>
+                <div id="gacha-result" class="gacha-result" style="height: 100px; display: flex; align-items: center; justify-content: center; font-size: 24px; margin-bottom: 20px; font-weight: bold;"></div>
+                <button class="action-btn glow-btn" id="btn-draw-gacha" onclick="drawGacha()" style="width: 200px; margin: 0 auto;">🎰 點擊抽卡</button>
+            </div>
+            <div class="shop-direct-buy">
+                <h3 style="margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px;">解鎖防禦塔</h3>
+                <div id="shop-list" class="item-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 15px;">
+                    <!-- JS 生成 -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 背包視圖 -->
+    <div id="backpack-view" class="view-screen hidden">
+        <div class="view-header">
+            <div style="display:flex; gap:10px;">
+                <button class="action-btn" style="width:auto; padding: 5px 15px;" onclick="switchView('home-view')">⬅ 返回</button>
+                <button class="action-btn" style="width:auto; padding: 5px 15px; background: rgba(239, 68, 68, 0.2); border-color: #ef4444; color: #fca5a5;" onclick="if(confirm('警告：確定要清除所有進度並重置遊戲嗎？')) { localStorage.removeItem('mergeTDProfile'); location.reload(); }">清除存檔</button>
+            </div>
+            <h2 class="view-title">背包與全域升級</h2>
+            <div class="view-coins" style="color: #facc15; font-size: 20px; font-weight: bold;">🪙 <span id="backpack-coins">0</span></div>
+        </div>
+        <div class="view-content backpack-content" style="padding: 20px; overflow-y: auto; height: calc(100vh - 60px);">
+              <h3 style="margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px; color: #a78bfa;">防禦塔庫存</h3>
+              <div id="backpack-grid" class="item-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; margin-bottom: 30px;">
+              </div>
+              <h3 style="margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px; color: #f472b6;">已解鎖派系天賦</h3>
+              <div id="backpack-factions-grid" class="item-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px;">
+              </div>
+          </div>
+    </div>
+
+    <!-- 圖鑑視圖 -->
+    <div id="encyclopedia-view" class="view-screen hidden">
+        <div class="view-header">
+            <button class="action-btn" style="width:auto; padding: 5px 15px;" onclick="switchView('home-view')">⬅ 返回</button>
+            <h2 class="view-title">遊戲圖鑑</h2>
+        </div>
+        <div class="view-content ency-content" style="padding: 20px; overflow-y: auto; height: calc(100vh - 60px);">
+            <h3 style="margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px; color: #a78bfa;">防禦塔一覽</h3>
+            <div id="ency-towers" class="ency-list" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px; margin-bottom: 30px;">
+            </div>
+
+            <h3 style="margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px; color: #ef4444;">敵人一覽</h3>
+            <div id="ency-enemies" class="ency-list" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px; margin-bottom: 30px;">
+            </div>
+
+            <h3 style="margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px; color: #3b82f6;">派系天賦 (Lv.5 終極技)</h3>
+            <div id="ency-factions" class="ency-list" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px; margin-bottom: 30px;">
+            </div>
+
+            <h3 style="margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px; color: #f472b6;">融合天賦</h3>
+            <div id="ency-fusions" class="ency-list" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px; margin-bottom: 30px;">
+            </div></div>
+    </div>
+
+    </div> <!-- End of app-container -->
+
+    <!-- 遊戲邏輯腳本 -->
+    <script src="game.js"></script>
+</body>
+</html>

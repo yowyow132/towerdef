@@ -28,7 +28,7 @@
         <!-- 戰鬥視圖 (原本的遊戲) -->
         <div id="battle-view" class="view-screen hidden">
             <div id="battle-header-nav" style="padding: 10px; background: rgba(15,15,25,0.9); border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: flex-start; z-index: 10;">
-                <button class="action-btn" onclick="quitBattle()" style="width: auto; padding: 5px 15px; font-size: 14px; background: rgba(239, 68, 68, 0.2); border-color: rgba(239, 68, 68, 0.5); color: #fca5a5;">⬅ 退回主選單</button>
+                <button class="action-btn" onclick="openSettings()" style="width: auto; padding: 5px 15px; font-size: 14px; background: rgba(167, 139, 250, 0.2); border-color: rgba(167, 139, 250, 0.5); color: #c084fc;">⚙️ 設定</button>
             </div>
             <div id="game-container">
         <!-- 頂部資訊欄 -->
@@ -222,5 +222,33 @@
     <!-- 遊戲邏輯腳本 -->
     <script src="game.js"></script>
     <audio id="bg-music" src="Strategy_in_the_Sun.mp3" loop></audio>
+
+      <!-- 設定選單 -->
+      <div id="settings-modal" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.8); z-index: 100; display: none; justify-content: center; align-items: center;">
+          <div style="background: #1e1b4b; border: 2px solid #a78bfa; border-radius: 12px; padding: 30px; width: 320px; text-align: center; box-shadow: 0 0 20px rgba(167, 139, 250, 0.5);">
+              <h2 style="color: #c084fc; margin-bottom: 25px;">⚙️ 遊戲設定</h2>
+              
+              <div style="margin-bottom: 20px; text-align: left;">
+                  <label style="color: #e2e8f0; font-size: 14px;">🎵 背景音樂音量</label>
+                  <input type="range" id="vol-bgm" min="0" max="100" value="40" style="width: 100%; margin-top: 8px;" onchange="updateVolumes()">
+              </div>
+              
+              <div style="margin-bottom: 20px; text-align: left;">
+                  <label style="color: #e2e8f0; font-size: 14px;">⚔️ 防禦塔攻擊音效</label>
+                  <input type="range" id="vol-shoot" min="0" max="100" value="50" style="width: 100%; margin-top: 8px;" onchange="updateVolumes()">
+              </div>
+              
+              <div style="margin-bottom: 30px; text-align: left;">
+                  <label style="color: #e2e8f0; font-size: 14px;">💥 怪物受擊音效</label>
+                  <input type="range" id="vol-hit" min="0" max="100" value="50" style="width: 100%; margin-top: 8px;" onchange="updateVolumes()">
+              </div>
+              
+              <div style="display: flex; flex-direction: column; gap: 15px;">
+                  <button class="action-btn glow-btn" onclick="closeSettings()" style="padding: 10px;">▶ 繼續戰鬥</button>
+                  <button class="action-btn" onclick="settleImmediately()" style="padding: 10px; background: rgba(234, 179, 8, 0.2); border-color: #eab308; color: #fef08a;">💰 立即結算 (放棄進度並領獎)</button>
+              </div>
+          </div>
+      </div>
+
 </body>
 </html>

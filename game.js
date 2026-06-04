@@ -1,3 +1,71 @@
+
+const SoundManager = {
+    audioCtx: null,
+    bgmVolume: 0.4,
+    shootVolume: 0.5,
+    hitVolume: 0.5,
+    init: function() {
+        if (!this.audioCtx) {
+            this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (this.audioCtx.state === 'suspended') {
+            this.audioCtx.resume();
+        }
+    },
+    playShoot: function(type) {
+        if (!this.audioCtx) return;
+        const osc = this.audioCtx.createOscillator();
+        const gainNode = this.audioCtx.createGain();
+        osc.connect(gainNode);
+        gainNode.connect(this.audioCtx.destination);
+        
+        let freq = 400;
+        let typeOsc = 'square';
+        let duration = 0.1;
+        
+        if (type === 'archer') { freq = 600; typeOsc = 'triangle'; duration = 0.05; }
+        else if (type === 'magic') { freq = 800; typeOsc = 'sine'; duration = 0.15; }
+        else if (type === 'cannon') { freq = 150; typeOsc = 'square'; duration = 0.2; }
+        else if (type === 'sniper') { freq = 1200; typeOsc = 'sawtooth'; duration = 0.08; }
+        else if (type === 'poison') { freq = 300; typeOsc = 'sine'; duration = 0.1; }
+        else if (type === 'tesla') { freq = 900; typeOsc = 'sawtooth'; duration = 0.1; }
+        else if (type === 'frost') { freq = 700; typeOsc = 'sine'; duration = 0.2; }
+        else if (type === 'blackhole') { freq = 100; typeOsc = 'square'; duration = 0.3; }
+        
+        osc.type = typeOsc;
+        osc.frequency.setValueAtTime(freq, this.audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(freq * 0.1, this.audioCtx.currentTime + duration);
+        
+        gainNode.gain.setValueAtTime(0.1 * (this.shootVolume * 2), this.audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioCtx.currentTime + duration);
+        
+        osc.start();
+        osc.stop(this.audioCtx.currentTime + duration);
+    },
+    playHit: function(isCrit) {
+        if (!this.audioCtx) return;
+        const osc = this.audioCtx.createOscillator();
+        const gainNode = this.audioCtx.createGain();
+        osc.connect(gainNode);
+        gainNode.connect(this.audioCtx.destination);
+        
+        osc.type = 'sawtooth';
+        let freq = isCrit ? 200 : 400;
+        let duration = isCrit ? 0.15 : 0.05;
+        let vol = isCrit ? 0.2 : 0.05;
+        
+        osc.frequency.setValueAtTime(freq, this.audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(50, this.audioCtx.currentTime + duration);
+        
+        gainNode.gain.setValueAtTime(vol * (this.hitVolume * 2), this.audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioCtx.currentTime + duration);
+        
+        osc.start();
+        osc.stop(this.audioCtx.currentTime + duration);
+    }
+};
+document.addEventListener('pointerdown', () => SoundManager.init());
+
 ﻿// Merge TD - 遊戲核心邏輯
 
 // ==========================================
@@ -137,6 +205,7 @@ function initBattle() {
 
 function quitBattle() {
     isGameOver = true;
+    gameState.isPaused = true;
     gameState.waveActive = false;
     clearTimeout(gameState.waveTimer);
     switchView('home-view');
@@ -364,6 +433,22 @@ class Tower {
         } else if (this.type === 'blackhole') {
             projectiles.push(new Projectile(this.x, this.y, target, 'blackhole', dmg, 3, { isCrit: isCrit }));
         }
+        if (typeof SoundManager !== 'undefined') SoundManager.playShoot(this.type);
+        
+        if (rogueState.fusions.timewarp && rogueState.fusions.timewarp.active) {
+            if (Math.random() < 0.15) {
+                this.cooldown = 0;
+                damageTexts.push({ text: '⏳ 扭曲', x: this.x + 20, y: this.y - 20, color: '#a78bfa' });
+            }
+        }
+        
+        if (rogueState.fusions.plunder && rogueState.fusions.plunder.active) {
+            if (Math.random() < 0.10) {
+                addGold(2);
+                damageTexts.push({ text: '💰 +2', x: this.x - 20, y: this.y - 20, color: '#eab308' });
+            }
+        }
+
     }
 
     draw(ctx, x, y, isHovered = false) {
@@ -414,12 +499,80 @@ class Tower {
             ctx.strokeStyle = '#fff';
             ctx.stroke();
         } else if (this.type === 'cannon') {
-            // 砲管
+            // 砲台
             ctx.rect(0, -6, 22, 12);
             ctx.fillStyle = '#4b5563';
             ctx.strokeStyle = '#fff';
             ctx.lineWidth = 1.5;
             ctx.fill();
+            ctx.stroke();
+        } else if (this.type === 'sniper') {
+            // 狙擊塔
+            ctx.rect(0, -3, 28, 6);
+            ctx.fillStyle = '#1e293b';
+            ctx.fill();
+            ctx.stroke();
+            ctx.rect(8, -6, 8, 3);
+            ctx.fillStyle = '#ef4444';
+            ctx.fill();
+        } else if (this.type === 'poison') {
+            // 毒素塔
+            ctx.beginPath();
+            ctx.arc(8, 0, 8, 0, Math.PI * 2);
+            ctx.fillStyle = '#22c55e';
+            ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(8, -4);
+            ctx.lineTo(20, -2);
+            ctx.lineTo(20, 2);
+            ctx.lineTo(8, 4);
+            ctx.fillStyle = '#10b981';
+            ctx.fill();
+        } else if (this.type === 'tesla') {
+            // 電磁塔
+            ctx.moveTo(0, -8);
+            ctx.lineTo(16, -8);
+            ctx.lineTo(24, -2);
+            ctx.lineTo(24, 2);
+            ctx.lineTo(16, 8);
+            ctx.lineTo(0, 8);
+            ctx.fillStyle = '#facc15';
+            ctx.fill();
+            ctx.strokeStyle = '#ca8a04';
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(20, 0, 4, 0, Math.PI * 2);
+            ctx.fillStyle = '#fff';
+            ctx.fill();
+        } else if (this.type === 'frost') {
+            // 冰霜塔
+            ctx.moveTo(4, 0);
+            ctx.lineTo(12, -10);
+            ctx.lineTo(24, 0);
+            ctx.lineTo(12, 10);
+            ctx.closePath();
+            ctx.fillStyle = '#60a5fa';
+            ctx.fill();
+            ctx.strokeStyle = '#fff';
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(12, 0, 4, 0, Math.PI * 2);
+            ctx.fillStyle = '#bfdbfe';
+            ctx.fill();
+        } else if (this.type === 'blackhole') {
+            // 黑洞塔
+            ctx.beginPath();
+            ctx.ellipse(12, 0, 16, 6, 0, 0, Math.PI * 2);
+            ctx.strokeStyle = '#c084fc';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(12, 0, 8, 0, Math.PI * 2);
+            ctx.fillStyle = '#000';
+            ctx.shadowColor = '#c084fc';
+            ctx.shadowBlur = 10;
+            ctx.fill();
+            ctx.strokeStyle = '#e879f9';
             ctx.stroke();
         }
 
@@ -542,6 +695,19 @@ class Enemy {
 
     damage(amount, color = '#f3f4f6', isCrit = false) {
         if (this.hp <= 0) return;
+        if (typeof SoundManager !== 'undefined') SoundManager.playHit(isCrit);
+        
+        if (rogueState.fusions.blizzard && rogueState.fusions.blizzard.active) {
+            if (this.isFrozen) {
+                amount *= 1.5;
+            }
+        }
+        if (rogueState.fusions.execution && rogueState.fusions.execution.active) {
+            if (this.hp / this.maxHp <= 0.25) {
+                amount *= 4; 
+            }
+        }
+
 
         // 霜凍絕對零度：攻擊被凍結敵人時傷害提升 100%
         if (this.isFrozen) {
@@ -906,8 +1072,7 @@ class Projectile {
                     let dx = this.x - enemy.x;
                     let dy = this.y - enemy.y;
                     if (d > 10 && !enemy.isBoss) {
-                        enemy.x += (dx / d) * 30; 
-                        enemy.y += (dy / d) * 30;
+                        enemy.distance = Math.max(0, enemy.distance - 25);
                     }
                 }
             }
@@ -1677,8 +1842,7 @@ function checkWaveCompletion() {
         // 貪婪派系 5等終極強化【財團利息】：每波結束給予 30% 利息 (上限 100)
         if (rogueState.factions.greed.level === 5) {
             let interest = Math.round(gameState.gold * 0.30);
-            interest = Math.min(100, interest);
-            if (interest > 0) {
+                        if (interest > 0) {
                 addGold(interest);
                 damageTexts.push({
                     text: `利息 +🪙${interest}`,
@@ -1784,11 +1948,7 @@ function startWave(force = false) {
     }, 1000 / gameState.speed); // 隨倍速加快怪出生間隔
 
     // 若啟動自動下波，則在該波開始時自動啟動 5 秒倒數
-    if (gameState.autoWave) {
-        gameState.waveCountdown = 5;
-        updateUI();
-        startWaveCountdown();
-    }
+    
 }
 
 // 立即跳過波次 / 召喚下一波
@@ -1825,10 +1985,8 @@ function updateUI() {
     // 頂部數值
     let waveVal = document.querySelector('#stat-wave .stat-value');
     if (waveVal) {
-        if (gameState.waveActive && !gameState.autoWave) {
+        if (gameState.waveActive) {
             waveVal.innerText = gameState.wave;
-        } else if (gameState.autoWave && gameState.waveActive) {
-            waveVal.innerHTML = `${gameState.wave} <span style="font-size:11px;color:#c084fc">(${gameState.waveCountdown}s)</span>`;
         } else {
             waveVal.innerHTML = `${gameState.wave} <span style="font-size:11px;color:var(--text-secondary)">(${gameState.waveCountdown}s)</span>`;
         }
@@ -2049,6 +2207,19 @@ function drawGrid() {
 
 function updateGame(timeStep) {
     if (gameState.isPaused || gameState.lives <= 0) return;
+      if (rogueState.fusions.absolutezero && rogueState.fusions.absolutezero.active) {
+          rogueState.absoluteZeroTimer = (rogueState.absoluteZeroTimer || 0) + (16.6 * gameState.speed);
+          if (rogueState.absoluteZeroTimer >= 15000) {
+              rogueState.absoluteZeroTimer -= 15000;
+              enemies.forEach(e => {
+                  e.applySlow(1, 3000);
+                  e.isFrozen = true;
+                  e.frozenTimer = 3000;
+              });
+              damageTexts.push({ text: '❄️ 絕對零度 ❄️', x: CANVAS_WIDTH/2, y: CANVAS_HEIGHT/2, color: '#3b82f6', life: 100 });
+          }
+      }
+
 
     // 點石成金 Fusion 效果：每秒根據場上最高星級塔的數量產生金幣
     if (rogueState.fusions.midas.active) {
@@ -2916,7 +3087,13 @@ function renderEncyclopedia() {
             gatling: { name: '加特林機槍', reqs: ['狂怒', '迅捷'], color: 'linear-gradient(135deg, #ef4444, #22c55e)', icon: '🔫', desc: '狂怒+迅捷最高星防禦塔機率發射三連發範圍子彈' },
             shatter: { name: '碎冰擊', reqs: ['狂怒', '冰霜'], color: 'linear-gradient(135deg, #ef4444, #3b82f6)', icon: '🔨', desc: '狂怒+冰霜對凍結目標傷害 +30%，且 5% 機率秒殺非 Boss' },
             midas:   { name: '點石成金', reqs: ['貪婪', '命運'], color: 'linear-gradient(135deg, #eab308, #a78bfa)', icon: '✨', desc: '貪婪+命運場上每隻最高星塔每波+2元，且塔 5% 機率升級不花錢' },
-            bounty:  { name: '賞金標記', reqs: ['迅捷', '貪婪'], color: 'linear-gradient(135deg, #22c55e, #eab308)', icon: '🎯', desc: '迅捷+貪婪攻速最快的塔每秒 50 殺標記目標，獲得 5 元' }
+            bounty:  { name: '賞金', reqs: ['迅捷', '貪婪'], color: 'linear-gradient(135deg, #22c55e, #eab308)', icon: '🎯', desc: '【迅捷+貪婪】每秒增加50賞金目標，擊殺得5倍' },
+            plunder: { name: '掠奪', reqs: ['狂怒', '貪婪'], color: 'linear-gradient(135deg, #ef4444, #eab308)', icon: '💰', desc: '【狂怒+貪婪】攻擊有10%機率偷取2金幣' },
+            execution: { name: '處決', reqs: ['狂怒', '命運'], color: 'linear-gradient(135deg, #ef4444, #a78bfa)', icon: '💀', desc: '【狂怒+命運】對血量低於25%的敵人造成300%額外傷害' },
+            blizzard: { name: '暴風雪', reqs: ['迅捷', '冰霜'], color: 'linear-gradient(135deg, #22c55e, #3b82f6)', icon: '🌪️', desc: '【迅捷+冰霜】冰凍狀態的敵人受傷加深50%' },
+            timewarp: { name: '時空扭曲', reqs: ['迅捷', '命運'], color: 'linear-gradient(135deg, #22c55e, #a78bfa)', icon: '⏳', desc: '【迅捷+命運】攻擊後15%機率立刻重置冷卻' },
+            frostvault: { name: '冰霜寶庫', reqs: ['冰霜', '貪婪'], color: 'linear-gradient(135deg, #3b82f6, #eab308)', icon: '💎', desc: '【冰霜+貪婪】擊殺冰凍狀態的敵人額外掉落5金幣' },
+            absolutezero: { name: '絕對零度', reqs: ['冰霜', '命運'], color: 'linear-gradient(135deg, #3b82f6, #a78bfa)', icon: '❄️', desc: '【冰霜+命運】每15秒凍結全場敵人3秒' }
         };
         
         Object.keys(fusions).forEach(key => {
@@ -2963,7 +3140,7 @@ function startBGM() {
     if (bgMusicStarted) return;
     const bgm = document.getElementById('bg-music');
     if (bgm) {
-        bgm.volume = 0.4; // 設定音量為 40% 避免太大聲
+        bgm.volume = typeof SoundManager !== 'undefined' ? SoundManager.bgmVolume : 0.4; // 設定音量為 40% 避免太大聲
         bgm.play().then(() => {
             bgMusicStarted = true;
             // 成功播放後，就可以把這個監聽器移除了
@@ -2977,3 +3154,67 @@ function startBGM() {
 }
 document.addEventListener('pointerdown', startBGM);
 document.addEventListener('click', startBGM);
+
+// ==========================================
+// 10. 設定與結算系統 (Settings & Settle)
+// ==========================================
+function openSettings() {
+    gameState.isPaused = true;
+    document.getElementById('settings-modal').style.display = 'flex';
+    
+    // Sync sliders with current variables
+    if(typeof SoundManager !== 'undefined') {
+        document.getElementById('vol-bgm').value = SoundManager.bgmVolume * 100;
+        document.getElementById('vol-shoot').value = SoundManager.shootVolume * 100;
+        document.getElementById('vol-hit').value = SoundManager.hitVolume * 100;
+    }
+}
+
+function closeSettings() {
+    gameState.isPaused = false;
+    document.getElementById('settings-modal').style.display = 'none';
+}
+
+function updateVolumes() {
+    if(typeof SoundManager !== 'undefined') {
+        SoundManager.bgmVolume = parseInt(document.getElementById('vol-bgm').value) / 100;
+        SoundManager.shootVolume = parseInt(document.getElementById('vol-shoot').value) / 100;
+        SoundManager.hitVolume = parseInt(document.getElementById('vol-hit').value) / 100;
+        
+        let bgm = document.getElementById('bg-music');
+        if (bgm) bgm.volume = SoundManager.bgmVolume;
+    }
+}
+
+function settleImmediately() {
+    // 只有打完的波次才算數 (目前波次 - 1)
+    let completedWaves = Math.max(0, gameState.wave - 1);
+    let reward = completedWaves * 100;
+    
+    // 將金幣發放到帳號總資產 (不是戰鬥金幣)
+    playerProfile.gameCoins += reward;
+    saveProfile();
+    
+    closeSettings();
+    quitBattle();
+    
+    // UI Notification
+    let notification = document.createElement('div');
+    notification.innerText = '結算完成！成功討伐 ' + completedWaves + ' 波，獲得 ' + reward + ' 枚代幣';
+    notification.style.position = 'fixed';
+    notification.style.top = '20px';
+    notification.style.left = '50%';
+    notification.style.transform = 'translateX(-50%)';
+    notification.style.background = 'rgba(234, 179, 8, 0.9)';
+    notification.style.color = '#fff';
+    notification.style.padding = '15px 30px';
+    notification.style.borderRadius = '8px';
+    notification.style.fontWeight = 'bold';
+    notification.style.zIndex = '9999';
+    notification.style.boxShadow = '0 4px 15px rgba(0,0,0,0.5)';
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+        notification.remove();
+    }, 4000);
+}

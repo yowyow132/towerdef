@@ -18,14 +18,31 @@
                 🪙 <span id="home-coins">0</span>
             </div>
             <div class="home-menu" style="display: flex; flex-direction: column; gap: 15px; width: 300px; margin: 0 auto;">
-                <button class="action-btn glow-btn" onclick="switchView('battle-view'); initBattle();" style="padding: 15px; font-size: 18px;">⚔️ 前往戰鬥 (第一關)</button>
+                <div style="display: flex; gap: 10px;">
+                    <button class="action-btn glow-btn" onclick="switchView('level-select-view'); renderLevelSelect('campaign');" style="padding: 15px; font-size: 18px; flex: 1;">🗺️ 闖關模式</button>
+                    <button class="action-btn glow-btn" onclick="switchView('level-select-view'); renderLevelSelect('endless');" style="padding: 15px; font-size: 18px; flex: 1; border-color: rgba(239, 68, 68, 0.5); color: #fca5a5; box-shadow: 0 0 10px rgba(239, 68, 68, 0.3);">♾️ 無盡模式</button>
+                </div>
                 <button class="action-btn" onclick="switchView('shop-view'); renderShop();" style="padding: 15px; font-size: 18px; border-color: rgba(255,255,255,0.2);">🛒 商店與抽卡</button>
                 <button class="action-btn" onclick="switchView('backpack-view'); renderBackpack();" style="padding: 15px; font-size: 18px; border-color: rgba(255,255,255,0.2);">🎒 背包與升級</button>
+                <button class="action-btn glow-btn" onclick="switchView('tech-view'); renderTechTree();" style="padding: 15px; font-size: 18px; border-color: rgba(234,179,8,0.5); color: #fde047; box-shadow: 0 0 10px rgba(234,179,8,0.3);">🧬 玩家天賦</button>
                 <button class="action-btn" onclick="switchView('encyclopedia-view'); renderEncyclopedia();" style="padding: 15px; font-size: 18px; border-color: rgba(255,255,255,0.2);">📖 遊戲圖鑑</button>
+                <button class="action-btn" onclick="openTutorial()" style="padding: 15px; font-size: 18px; border-color: rgba(96,165,250,0.5); color: #93c5fd; box-shadow: 0 0 10px rgba(96,165,250,0.3);">🎓 新手教學</button>
             </div>
         </div>
 
         <!-- 戰鬥視圖 (原本的遊戲) -->
+        
+        <!-- 關卡選擇畫面 -->
+        <div id="level-select-view" class="view-screen hidden" style="overflow-y: auto;">
+            <div class="view-header" style="justify-content: flex-start; background: transparent; border: none;">
+                <button class="action-btn" style="width:auto; padding: 5px 15px;" onclick="switchView('home-view')">◀ 返回</button>
+            </div>
+            <h1 style="color: #a5b4fc; text-align: center; margin-top: 10px; font-size: 36px; text-shadow: 0 0 15px rgba(165,180,252,0.5);">🗺️ 選擇關卡</h1>
+            <div id="level-list" style="display: flex; gap: 30px; justify-content: center; margin-top: 40px; flex-wrap: wrap; padding: 0 50px; padding-bottom: 50px;">
+                <!-- Dynamically populated by JS -->
+            </div>
+        </div>
+
         <div id="battle-view" class="view-screen hidden">
             <div id="battle-header-nav" style="padding: 10px; background: rgba(15,15,25,0.9); border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: flex-start; z-index: 10;">
                 <button class="action-btn" onclick="openSettings()" style="width: auto; padding: 5px 15px; font-size: 14px; background: rgba(167, 139, 250, 0.2); border-color: rgba(167, 139, 250, 0.5); color: #c084fc;">⚙️ 設定</button>
@@ -174,7 +191,22 @@
     </div>
 
     <!-- 背包視圖 -->
-    <div id="backpack-view" class="view-screen hidden">
+    
+        <!-- 玩家天賦畫面 -->
+        <div id="tech-view" class="view-screen hidden" style="overflow-y: auto;">
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 20px 50px;">
+                <h1 style="color: #fde047; font-size: 32px; text-shadow: 0 0 15px rgba(234,179,8,0.5);">🧬 玩家科技樹</h1>
+                <div style="font-size: 24px; color: #facc15; font-weight: bold;">💰 <span id="tech-coins">0</span></div>
+            </div>
+            
+            <div id="tech-list" style="display: flex; flex-direction: column; gap: 20px; padding: 0 50px; margin-top: 20px; max-width: 800px; margin-left: auto; margin-right: auto;">
+                <!-- Dynamically populated -->
+            </div>
+            
+            <button class="action-btn" onclick="switchView('home-view')" style="margin: 50px auto; display: block; width: 200px; border-color: rgba(255,255,255,0.2);">返回主選單</button>
+        </div>
+
+        <div id="backpack-view" class="view-screen hidden">
         <div class="view-header">
             <div style="display:flex; gap:10px;">
                 <button class="action-btn" style="width:auto; padding: 5px 15px;" onclick="switchView('home-view')">⬅ 返回</button>
@@ -186,6 +218,10 @@
         <div class="view-content backpack-content" style="padding: 20px; overflow-y: auto; height: calc(100vh - 60px);">
               <h3 style="margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px; color: #a78bfa;">防禦塔庫存</h3>
               <div id="backpack-grid" class="item-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; margin-bottom: 30px;">
+              </div>
+              <h3 style="margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px; color: #fbbf24;">通關遺物</h3>
+              <div id="backpack-relics-grid" class="item-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; margin-bottom: 30px;">
+                  <!-- Relics will be populated here -->
               </div>
               <h3 style="margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px; color: #f472b6;">已解鎖派系天賦</h3>
               <div id="backpack-factions-grid" class="item-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px;">
@@ -247,6 +283,36 @@
                   <button class="action-btn glow-btn" onclick="closeSettings()" style="padding: 10px;">▶ 繼續戰鬥</button>
                   <button class="action-btn" onclick="settleImmediately()" style="padding: 10px; background: rgba(234, 179, 8, 0.2); border-color: #eab308; color: #fef08a;">💰 立即結算 (放棄進度並領獎)</button>
               </div>
+          </div>
+      </div>
+
+
+      <!-- 新手教學視窗 -->
+      <div id="tutorial-modal" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.85); z-index: 200; display: none; justify-content: center; align-items: center; backdrop-filter: blur(5px);">
+          <div style="background: linear-gradient(135deg, #1e1b4b, #312e81); border: 2px solid #818cf8; border-radius: 12px; padding: 30px; width: 400px; text-align: center; box-shadow: 0 0 30px rgba(129, 140, 248, 0.4);">
+              <h2 style="color: #a5b4fc; margin-bottom: 20px; font-size: 24px;" id="tutorial-title">🎓 新手教學 (1/4)</h2>
+              <div id="tutorial-content" style="color: #e2e8f0; font-size: 16px; line-height: 1.6; min-height: 80px; margin-bottom: 30px; text-align: left;">
+                  這是一款融合防禦塔的抽卡塔防遊戲。<br><br>戰鬥中，你可以花費金幣召喚防禦塔。只要<b>拖曳兩座等級與種類相同的防禦塔</b>，就可以將其【合成】升級！
+              </div>
+              <div style="display: flex; justify-content: space-between;">
+                  <button class="action-btn" onclick="closeTutorial()" style="width: 45%; padding: 10px; border-color: rgba(255,255,255,0.2);">跳過</button>
+                  <button class="action-btn glow-btn" id="tutorial-next-btn" onclick="nextTutorialStep()" style="width: 45%; padding: 10px;">下一步 ▶</button>
+              </div>
+          </div>
+      </div>
+
+      <!-- 勝利視窗 -->
+      <div id="victory-modal" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.9); z-index: 300; display: none; justify-content: center; align-items: center;">
+          <div style="background: radial-gradient(circle, #422006, #1a0b2e); border: 3px solid #facc15; border-radius: 15px; padding: 40px; width: 450px; text-align: center; box-shadow: 0 0 50px rgba(250, 204, 21, 0.6);">
+              <h1 style="color: #fde047; font-size: 36px; margin-bottom: 10px; text-shadow: 0 0 20px #eab308;">✨ 通關成功 ✨</h1>
+              <p style="color: #fef08a; font-size: 18px; margin-bottom: 30px;">恭喜你擊敗了最終 Boss，成功守住了防線！，成功守住了防線！</p>
+              
+              <div style="background: rgba(0,0,0,0.5); border: 1px solid rgba(250, 204, 21, 0.3); border-radius: 8px; padding: 15px; margin-bottom: 30px;">
+                  <p style="color: #cbd5e1; font-size: 14px; margin-bottom: 5px;">通關獎勵</p>
+                  <p style="color: #facc15; font-size: 28px; font-weight: bold;">💰 豐厚過關代幣</p>
+              </div>
+              
+              <button class="action-btn glow-btn" onclick="claimVictory()" style="padding: 15px 30px; font-size: 18px;">領取獎勵並返回主畫面</button>
           </div>
       </div>
 

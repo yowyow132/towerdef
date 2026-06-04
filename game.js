@@ -99,14 +99,84 @@ const UNLOCK_ORDER = [
 const UNLOCK_COSTS = [0, 0, 0, 0, 100, 200, 450, 1000, 2000, 4000, 8000, 15000];
 
 // 怪物行進路徑節點 (X, Y 像素)
-const PATH_POINTS = [
-    { x: 30, y: 55 },
-    { x: 770, y: 55 },
-    { x: 770, y: 425 },
-    { x: 30, y: 425 },
-    { x: 30, y: 220 },
-    { x: 180, y: 220 } // Portal 出口
-];
+const LEVEL_CONFIG = {
+    1: {
+        name: "第一關：星際迴廊",
+        desc: "外圈迴廊地形，適合新手練習防禦塔配置。",
+        bossWave: 30,
+        clearReward: 5000,
+        difficulty: 1.0,
+        path: [
+            { x: 30, y: 55 },
+            { x: 770, y: 55 },
+            { x: 770, y: 425 },
+            { x: 30, y: 425 },
+            { x: 30, y: 220 },
+            { x: 180, y: 220 }
+        ],
+        theme: {
+            bg: '#0f0f19',
+            trackOuter: 'rgba(99, 102, 241, 0.15)',
+            trackInner: 'rgba(167, 139, 250, 0.4)',
+            trackLine: '#1e1b4b',
+            portal: 'rgba(12, 12, 20, 0.9)',
+            portalGlow: '#a78bfa'
+        }
+    },
+    2: {
+        name: "第二關：腥紅渦流",
+        desc: "連續 Z 字型極速彎道地形，怪物基礎屬性提升 20%！",
+        bossWave: 40,
+        clearReward: 10000,
+        difficulty: 1.2,
+        path: [
+            { x: 30, y: 240 },
+            { x: 200, y: 240 },
+            { x: 200, y: 80 },
+            { x: 600, y: 80 },
+            { x: 600, y: 400 },
+            { x: 400, y: 400 },
+            { x: 400, y: 240 },
+            { x: 770, y: 240 }
+        ],
+        theme: {
+            bg: '#1a0b12',
+            trackOuter: 'rgba(244, 63, 94, 0.15)',
+            trackInner: 'rgba(251, 113, 133, 0.4)',
+            trackLine: '#4c0519',
+            portal: 'rgba(20, 5, 10, 0.9)',
+            portalGlow: '#fb7185'
+        }
+    },
+    3: {
+        name: "第三關：無盡星海",
+        desc: "挑戰極限！無限波次與幾何級距成長的強大敵人，每撐過 10 波直接掉落大量局外代幣。",
+        bossWave: 9999,
+        clearReward: 0,
+        difficulty: 1.5,
+        path: [
+            { x: 30, y: 55 },
+            { x: 400, y: 55 },
+            { x: 400, y: 300 },
+            { x: 100, y: 300 },
+            { x: 100, y: 150 },
+            { x: 770, y: 150 },
+            { x: 770, y: 425 },
+            { x: 400, y: 425 }
+        ],
+        theme: {
+            bg: '#050510',
+            trackOuter: 'rgba(56, 189, 248, 0.15)',
+            trackInner: 'rgba(14, 165, 233, 0.4)',
+            trackLine: '#0c4a6e',
+            portal: 'rgba(5, 10, 20, 0.9)',
+            portalGlow: '#38bdf8'
+        }
+    }
+};
+
+let PATH_POINTS = LEVEL_CONFIG[1].path;
+
 
 // ==========================================
 // 2. 全域遊戲狀態
@@ -116,22 +186,29 @@ let rogueState = {
         fury:  { level: 0, maxLevel: 5, name: '狂暴', color: '#ef4444', icon: '🔥', baseDesc: '每等提升全場攻擊力 +15% 與暴擊率 +5%', ultName: '核爆連鎖', ultDesc: '暴擊時引發 200% 範圍物理傷害爆炸' },
         swift: { level: 0, maxLevel: 5, name: '迅捷', color: '#22c55e', icon: '⚡', baseDesc: '每等提升全場防禦塔攻擊速度 +20%', ultName: '幻影過載', ultDesc: '連續攻擊同一個目標時攻速持續疊加最高 +150%' },
         frost: { level: 0, maxLevel: 5, name: '霜凍', color: '#3b82f6', icon: '❄️', baseDesc: '攻擊附帶減速 +8% 並擴大砲台濺射半徑 +15px', ultName: '絕對零度', ultDesc: '減速達 60% 時凍結目標 2 秒，對凍結目標傷害 +100%' },
-        greed: { level: 0, maxLevel: 5, name: '貪婪', color: '#eab308', icon: '💰', baseDesc: '每等提升擊殺金幣 +30% 且召喚成本降低 12%', ultName: '財團利息', ultDesc: '波次結束時結算剩餘金幣並發放 30% 利息(上限 100)' },
+        greed: { level: 0, maxLevel: 5, name: '貪婪', color: '#eab308', icon: '💰', baseDesc: '每等提升擊殺金幣 +30% 且召喚成本降低 12%', ultName: '財團利息', ultDesc: '波次結束時結算剩餘金幣並發放 30% 利息(無上限)' },
         fate:  { level: 0, maxLevel: 5, name: '命運', color: '#a78bfa', icon: '🎲', baseDesc: '直接召喚高一級塔機率 +10% 且每次增幅獲得重滾次數 +2', ultName: '奇蹟突變', ultDesc: '合併時有 20% 機率直接連升 2 級' }
     },
     fusions: {
-        gatling: { active: false, name: '加特林風暴', req: ['fury', 'swift'], color: 'linear-gradient(135deg, #ef4444, #22c55e)', icon: '🏹', desc: '【狂暴+迅捷】所有防禦塔發射分裂箭，每次射擊同時朝三個方向開火，均可暴擊' },
-        shatter: { active: false, name: '碎冰核爆', req: ['fury', 'frost'], color: 'linear-gradient(135deg, #ef4444, #3b82f6)', icon: '💥', desc: '【狂暴+霜凍】攻擊減速/凍結怪傷害 +30%，且有 5% 機率秒殺普通與精英怪物' },
-        midas:   { active: false, name: '點石成金', req: ['greed', 'fate'], color: 'linear-gradient(135deg, #eab308, #a78bfa)', icon: '🪙', desc: '【貪婪+命運】場上每個最高星級塔每秒產生 2 金幣，召喚塔時 5% 機率直接召喚出當前場上最高等級的塔' },
-        bounty:  { active: false, name: '賞金獵手', req: ['swift', 'greed'], color: 'linear-gradient(135deg, #22c55e, #eab308)', icon: '🎯', desc: '【迅捷+貪婪】防禦塔累計發射 50 發子彈後標記懸賞目標，擊殺獲得 5 倍金幣' }
+        gatling: { active: false, name: '加特林機槍', req: ['fury', 'swift'], color: 'linear-gradient(135deg, #ef4444, #22c55e)', icon: '🔫', desc: '[狂暴]+[迅捷] 所有塔攻速與攻擊力均等化，每擊中三次額外分裂出追蹤彈' },
+        shatter: { active: false, name: '碎冰擊', req: ['fury', 'frost'], color: 'linear-gradient(135deg, #ef4444, #3b82f6)', icon: '🧊', desc: '[狂暴]+[霜凍] 冰緩/凍結傷害 +30%，有 5% 機率秒殺非 Boss' },
+        midas:   { active: false, name: '點金術', req: ['greed', 'fate'], color: 'linear-gradient(135deg, #eab308, #a78bfa)', icon: '🪙', desc: '[貪婪]+[命運] 升級塔時有機會讓造價減 2 成，且有 5% 機率掉落雙倍代幣' },
+        bounty:  { active: false, name: '賞金獵手', req: ['swift', 'greed'], color: 'linear-gradient(135deg, #22c55e, #eab308)', icon: '🎯', desc: '[迅捷]+[貪婪] 每擊殺 50 隻怪隨機標記目標，擊殺拿 5 倍' },
+        plunder: { active: false, name: '劫掠', req: ['fury', 'greed'], color: 'linear-gradient(135deg, #ef4444, #eab308)', icon: '🪓', desc: '[狂暴]+[貪婪] 每次攻擊有 10% 機率掉落 2 金幣' },
+        execution: { active: false, name: '斬殺', req: ['fury', 'fate'], color: 'linear-gradient(135deg, #ef4444, #a78bfa)', icon: '⚔️', desc: '[狂暴]+[命運] 對血量低於 25% 敵人造成 300% 額外傷害' },
+        blizzard: { active: false, name: '暴風雪', req: ['swift', 'frost'], color: 'linear-gradient(135deg, #22c55e, #3b82f6)', icon: '❄️', desc: '[迅捷]+[霜凍] 凍結狀態下，敵人額外受到 50% 傷害' },
+        timewarp: { active: false, name: '時間回溯', req: ['swift', 'fate'], color: 'linear-gradient(135deg, #22c55e, #a78bfa)', icon: '⏳', desc: '[迅捷]+[命運] 攻擊時有 15% 機率重置技能冷卻' },
+        frostvault: { active: false, name: '冰霜金庫', req: ['frost', 'greed'], color: 'linear-gradient(135deg, #3b82f6, #eab308)', icon: '🧊', desc: '[霜凍]+[貪婪] 冰緩狀態下，敵人額外受到 5 點傷害' },
+        absolutezero: { active: false, name: '絕對零度', req: ['frost', 'fate'], color: 'linear-gradient(135deg, #3b82f6, #a78bfa)', icon: '🥶', desc: '[霜凍]+[命運] 每 15 秒凍結全場敵人 3 秒' }
     },
     rerollsLeft: 2,
-    totalShots: 0,
-    bountyTargetId: null,
-    passiveGoldTimer: 0
-};
+        totalShots: 0,
+        bountyTargetId: null,
+        passiveGoldTimer: 0
+    };
 
 let gameState = {
+    level: 1,
     gold: 300,
     lives: 20,
     wave: 1,
@@ -161,6 +238,12 @@ let playerProfile = {
     }
 };
 
+function formatMoney(amount) {
+    if (amount >= 1000000) return (amount / 1000000).toFixed(1).replace(/\.0$/, '') + 'm';
+    if (amount >= 1000) return (amount / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+    return amount.toString();
+}
+
 function saveProfile() {
     localStorage.setItem('mergeTDProfile', JSON.stringify(playerProfile));
 }
@@ -171,10 +254,14 @@ function loadProfile() {
         let parsed = JSON.parse(saved);
         playerProfile.gameCoins = parsed.gameCoins || 0;
         playerProfile.ownedTowers = parsed.ownedTowers || ['archer', 'magic', 'cannon'];
+        playerProfile.hasSeenTutorial = parsed.hasSeenTutorial || false;
+        playerProfile.highestLevelCleared = parsed.highestLevelCleared || 0;
         if(parsed.globalUpgrades) {
             Object.assign(playerProfile.globalUpgrades, parsed.globalUpgrades);
         }
         playerProfile.ownedFactions = parsed.ownedFactions || ['fury', 'swift', 'frost', 'greed', 'fate'];
+        playerProfile.ownedRelics = parsed.ownedRelics || [];
+        playerProfile.playerUpgrades = parsed.playerUpgrades || { startGold: 1, startLives: 1, rerolls: 1, discount: 1 };
     }
 }
 loadProfile();
@@ -182,7 +269,9 @@ loadProfile();
 // 計算全域升級費用的公式
 function getUpgradeCost(type) {
     let level = playerProfile.globalUpgrades[type] || 1;
-    return Math.floor(100 * Math.pow(1.5, level - 1));
+    let baseCost = 100 * Math.pow(1.5, level - 1);
+    let discount = 1 - ((playerProfile.playerUpgrades?.discount || 1) - 1) * 0.02;
+    return Math.floor(baseCost * discount);
 }
 
 // ------------------------------------------
@@ -194,12 +283,15 @@ function switchView(viewId) {
     
     // 更新主選單 UI
     if(viewId === 'home-view') {
-        document.getElementById('home-coins').innerText = playerProfile.gameCoins;
+        document.getElementById('home-coins').innerText = formatMoney(playerProfile.gameCoins);
     }
 }
 
-function initBattle() {
-    restartGame(); // 重置單局進度
+function initBattle(levelId = 1) {
+    restartGame();
+    gameState.level = levelId;
+    PATH_POINTS = LEVEL_CONFIG[levelId].path;
+    document.getElementById('canvas-wrapper').style.background = LEVEL_CONFIG[levelId].theme.bg; // 重置單局進度
     switchView('battle-view');
 }
 
@@ -251,7 +343,11 @@ class Tower {
         const levelMult = Math.pow(1.8, this.level - 1);
         const globalMult = 1 + ((playerProfile.globalUpgrades[this.type] || 1) - 1) * 0.2; // 每升一級 +20%
         const furyMult = 1 + rogueState.factions.fury.level * 0.15;
-        return Math.round(base * levelMult * globalMult * furyMult);
+        let relicMult = 1;
+        if (typeof playerProfile !== 'undefined' && playerProfile.ownedRelics && playerProfile.ownedRelics.includes(1)) {
+            relicMult = 1.1; // Relic 1: +10% dmg
+        }
+        return Math.round(base * levelMult * globalMult * furyMult * relicMult);
     }
 
     get AS() {
@@ -348,7 +444,11 @@ class Tower {
 
     shoot(target) {
         // 狂暴暴擊率判定
-        let isCrit = Math.random() < rogueState.factions.fury.level * 0.05;
+        let critChance = rogueState.factions.fury.level * 0.05;
+        if (typeof playerProfile !== 'undefined' && playerProfile.ownedRelics && playerProfile.ownedRelics.includes(2)) {
+            critChance += 0.05; // Relic 2: +5% crit
+        }
+        let isCrit = Math.random() < critChance;
         let dmg = this.ATK;
         if (isCrit) dmg *= 2;
 
@@ -357,10 +457,13 @@ class Tower {
             rogueState.totalShots++;
             if (rogueState.totalShots >= 50) {
                 rogueState.totalShots = 0;
-                let activeEnemies = enemies.filter(e => e.hp > 0 && e.id !== rogueState.bountyTargetId);
-                if (activeEnemies.length > 0) {
-                    let randEnemy = activeEnemies[Math.floor(Math.random() * activeEnemies.length)];
-                    rogueState.bountyTargetId = randEnemy.id;
+                rogueState.bountyTargetsCount = (rogueState.bountyTargetsCount || 1) + 1; // Increase marks
+                let activeEnemies = enemies.filter(e => e.hp > 0 && !e.isBountyTarget);
+                let markCount = Math.min(Math.floor(rogueState.bountyTargetsCount), activeEnemies.length);
+                for (let i = 0; i < markCount; i++) {
+                    let idx = Math.floor(Math.random() * activeEnemies.length);
+                    activeEnemies[idx].isBountyTarget = true;
+                    activeEnemies.splice(idx, 1); // Remove from temp array
                 }
             }
         }
@@ -596,11 +699,16 @@ class Enemy {
         this.poisonDmg = 0;
 
         // 難度階梯：每 10 波提升一次 HP 指數成長系數
+        
         const difficultyTier = Math.floor((wave - 1) / 10);
-        const hpGrowthRate = 1.20 + Math.min(0.20, difficultyTier * 0.05); // 1.20, 1.25, 1.30, 1.35...
-        const baseHp = isBoss ? 1000 : 100;
-        const waveHpMultiplier = Math.pow(hpGrowthRate, wave - 1);
+        const hpGrowthRate = 1.20 + Math.min(0.20, difficultyTier * 0.05); 
+        const baseHp = (isBoss ? 1000 : 100) * LEVEL_CONFIG[gameState.level].difficulty;
+        
+        // 無盡模式倍率大幅強化 (曲線陡峭上升)
+        let actualGrowthRate = gameState.level === 3 ? hpGrowthRate * 1.15 : hpGrowthRate;
+        const waveHpMultiplier = Math.pow(actualGrowthRate, wave - 1);
         let calculatedHp = Math.round(baseHp * waveHpMultiplier);
+
 
         // 決定非 Boss 怪物的類型
         this.enemyType = 'standard';
@@ -697,6 +805,12 @@ class Enemy {
         if (this.hp <= 0) return;
         if (typeof SoundManager !== 'undefined') SoundManager.playHit(isCrit);
         
+        if (rogueState.fusions.frostvault && rogueState.fusions.frostvault.active) {
+            if (this.isFrozen || this.slowAmount > 0) {
+                amount += 5;
+            }
+        }
+        
         if (rogueState.fusions.blizzard && rogueState.fusions.blizzard.active) {
             if (this.isFrozen) {
                 amount *= 1.5;
@@ -757,7 +871,7 @@ class Enemy {
         goldReward = Math.round(goldReward * greedBonus);
 
         // 賞金獵手 5 倍金幣
-        if (this.id === rogueState.bountyTargetId) {
+        if (this.isBountyTarget) {
             goldReward *= 5;
             rogueState.bountyTargetId = null;
 
@@ -849,7 +963,7 @@ class Enemy {
             
             // 標記死亡/移除
             this.hp = 0;
-            if (this.id === rogueState.bountyTargetId) {
+            if (this.isBountyTarget) {
                 rogueState.bountyTargetId = null;
             }
             
@@ -870,7 +984,7 @@ class Enemy {
         ctx.shadowOffsetY = 4;
 
         // 懸賞標記繪製 (如果該怪是懸賞目標)
-        if (this.id === rogueState.bountyTargetId) {
+        if (this.isBountyTarget) {
             ctx.fillStyle = '#eab308';
             ctx.font = 'bold 16px Outfit';
             ctx.textAlign = 'center';
@@ -1833,19 +1947,46 @@ function initDragAndDrop() {
 
 function checkWaveCompletion() {
     if (gameState.waveActive && gameState.spawnFinished && enemies.length === 0) {
+        if (gameState.wave === LEVEL_CONFIG[gameState.level].bossWave) {
+            gameState.waveActive = false;
+            
+            // 解鎖下一關
+            playerProfile.highestLevelCleared = Math.max(playerProfile.highestLevelCleared, gameState.level);
+            saveProfile();
+            
+            showVictoryScreen();
+            return;
+        }
+        // Endless Mode Reward Every 10 Waves
+        if (gameState.level === 3 && gameState.wave % 10 === 0) {
+            let endlessReward = gameState.wave * 1000;
+            playerProfile.gameCoins += endlessReward;
+            saveProfile();
+            
+            damageTexts.push({
+                text: '無盡獎勵 +💰' + endlessReward,
+                x: CANVAS_WIDTH / 2,
+                y: CANVAS_HEIGHT / 2 - 100,
+                color: '#38bdf8',
+                alpha: 1.0,
+                life: 100
+            });
+        }
         gameState.waveActive = false;
         
         // 完成波次金幣獎勵：100 + wave * 10
         const waveClearReward = 100 + gameState.wave * 10;
         addGold(waveClearReward);
 
-        // 貪婪派系 5等終極強化【財團利息】：每波結束給予 30% 利息 (上限 100)
+        // 貪婪派系 5等終極強化【財團利息】：每波結束給予 30% 利息 (無上限)
         if (rogueState.factions.greed.level === 5) {
             let interest = Math.round(gameState.gold * 0.30);
+            let maxInterest = 500 + gameState.wave * 200;
+            if (interest > maxInterest) interest = maxInterest;
                         if (interest > 0) {
                 addGold(interest);
                 damageTexts.push({
-                    text: `利息 +🪙${interest}`,
+                    text: `利息 +🪙${formatMoney(interest)}`,
                     x: canvas.width / 2,
                     y: canvas.height / 2 - 60,
                     color: '#facc15',
@@ -1856,7 +1997,7 @@ function checkWaveCompletion() {
         }
 
         // 每 3 波觸發隨機天賦三選一
-                if (gameState.wave % 3 === 0) {
+                if (gameState.wave % 2 === 0) {
             triggerTalentSelection();
         } else {
             gameState.wave++;
@@ -1992,7 +2133,7 @@ function updateUI() {
         }
     }
     
-    document.querySelector('#stat-gold .stat-value').innerText = gameState.gold;
+    document.querySelector('#stat-gold .stat-value').innerText = formatMoney(gameState.gold);
     document.querySelector('#stat-hp .stat-value').innerText = gameState.lives;
     document.querySelector('#stat-slots .stat-value').innerText = `${gameState.activeSlots} / 12`;
 
@@ -2009,7 +2150,7 @@ function updateUI() {
     if (summonBtn) {
         summonBtn.disabled = (gameState.gold < summonCost);
         if (summonTitleEl) summonTitleEl.innerText = `召喚 Lv.${summonLevel} 塔`;
-        if (summonCostEl) summonCostEl.innerText = `🪙 ${summonCost}`;
+        if (summonCostEl) summonCostEl.innerText = `🪙 ${formatMoney(summonCost)}`;
     }
 
     let upgradeBtn = document.getElementById('btn-upgrade-summon-lvl');
@@ -2018,7 +2159,7 @@ function updateUI() {
     if (upgradeBtn) {
         upgradeBtn.disabled = (gameState.gold < upgradeSummonCost);
         if (upgradeTitleEl) upgradeTitleEl.innerText = `提升召喚等級 → Lv.${summonLevel + 1}`;
-        if (upgradeCostEl) upgradeCostEl.innerText = `🪙 ${upgradeSummonCost}`;
+        if (upgradeCostEl) upgradeCostEl.innerText = `🪙 ${formatMoney(upgradeSummonCost)}`;
     }
 
     // 解鎖格子按鈕狀態
@@ -2028,7 +2169,7 @@ function updateUI() {
         document.getElementById('unlock-cost-label').innerText = '已達上限';
     } else {
         let cost = UNLOCK_COSTS[gameState.activeSlots];
-        document.getElementById('unlock-cost-label').innerText = `🪙 ${cost}`;
+        document.getElementById('unlock-cost-label').innerText = `🪙 ${formatMoney(cost)}`;
         unlockBtn.disabled = (gameState.gold < cost);
     }
 
@@ -2087,19 +2228,19 @@ function drawPath() {
     for (let i = 1; i < PATH_POINTS.length; i++) {
         ctx.lineTo(PATH_POINTS[i].x, PATH_POINTS[i].y);
     }
-    ctx.strokeStyle = 'rgba(99, 102, 241, 0.15)';
+    ctx.strokeStyle = LEVEL_CONFIG[gameState.level].theme.trackOuter;
     ctx.lineWidth = 32;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.stroke();
 
     // 內層細發光
-    ctx.strokeStyle = 'rgba(167, 139, 250, 0.4)';
+    ctx.strokeStyle = LEVEL_CONFIG[gameState.level].theme.trackInner;
     ctx.lineWidth = 12;
     ctx.stroke();
 
     // 最內層軌道線
-    ctx.strokeStyle = '#1e1b4b';
+    ctx.strokeStyle = LEVEL_CONFIG[gameState.level].theme.trackLine;
     ctx.lineWidth = 6;
     ctx.stroke();
 
@@ -2107,10 +2248,10 @@ function drawPath() {
     let exit = PATH_POINTS[PATH_POINTS.length - 1];
     ctx.beginPath();
     ctx.arc(exit.x, exit.y, 20, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(12, 12, 20, 0.9)';
-    ctx.strokeStyle = '#a78bfa';
+    ctx.fillStyle = LEVEL_CONFIG[gameState.level].theme.portal;
+    ctx.strokeStyle = LEVEL_CONFIG[gameState.level].theme.portalGlow;
     ctx.lineWidth = 3;
-    ctx.shadowColor = '#a78bfa';
+    ctx.shadowColor = LEVEL_CONFIG[gameState.level].theme.portalGlow;
     ctx.shadowBlur = 10;
     ctx.fill();
     ctx.stroke();
@@ -2761,8 +2902,8 @@ function endGame() {
 function restartGame() {
     // 重置所有遊戲變數
     gameState = {
-        gold: 300,
-        lives: 20,
+        gold: 300 + ((playerProfile.playerUpgrades?.startGold || 1) - 1) * 50,
+        lives: 20 + ((playerProfile.playerUpgrades?.startLives || 1) - 1) * 5,
         wave: 1,
         waveActive: false,
         activeSlots: 4,
@@ -2782,16 +2923,22 @@ function restartGame() {
             fury:  { level: 0, maxLevel: 5, name: '狂暴', color: '#ef4444', icon: '🔥', baseDesc: '每等提升全場攻擊力 +15% 與暴擊率 +5%', ultName: '核爆連鎖', ultDesc: '暴擊時引發 200% 範圍物理傷害爆炸' },
             swift: { level: 0, maxLevel: 5, name: '迅捷', color: '#22c55e', icon: '⚡', baseDesc: '每等提升全場防禦塔攻擊速度 +20%', ultName: '幻影過載', ultDesc: '連續攻擊同一個目標時攻速持續疊加最高 +150%' },
             frost: { level: 0, maxLevel: 5, name: '霜凍', color: '#3b82f6', icon: '❄️', baseDesc: '攻擊附帶減速 +8% 並擴大砲台濺射半徑 +15px', ultName: '絕對零度', ultDesc: '減速達 60% 時凍結目標 2 秒，對凍結目標傷害 +100%' },
-            greed: { level: 0, maxLevel: 5, name: '貪婪', color: '#eab308', icon: '💰', baseDesc: '每等提升擊殺金幣 +30% 且召喚成本降低 12%', ultName: '財團利息', ultDesc: '波次結束時結算剩餘金幣並發放 30% 利息(上限 100)' },
+            greed: { level: 0, maxLevel: 5, name: '貪婪', color: '#eab308', icon: '💰', baseDesc: '每等提升擊殺金幣 +30% 且召喚成本降低 12%', ultName: '財團利息', ultDesc: '波次結束時結算剩餘金幣並發放 30% 利息(無上限)' },
             fate:  { level: 0, maxLevel: 5, name: '命運', color: '#a78bfa', icon: '🎲', baseDesc: '直接召喚高一級塔機率 +10% 且每次增幅獲得重滾次數 +2', ultName: '奇蹟突變', ultDesc: '合併時有 20% 機率直接連升 2 級' }
         },
         fusions: {
-            gatling: { active: false, name: '加特林風暴', req: ['fury', 'swift'], color: 'linear-gradient(135deg, #ef4444, #22c55e)', icon: '🏹', desc: '【狂暴+迅捷】所有防禦塔發射分裂箭，每次射擊同時朝三個方向開火，均可暴擊' },
-            shatter: { active: false, name: '碎冰核爆', req: ['fury', 'frost'], color: 'linear-gradient(135deg, #ef4444, #3b82f6)', icon: '💥', desc: '【狂暴+霜凍】攻擊減速/凍結怪傷害 +30%，且有 5% 機率秒殺普通與精英怪物' },
-            midas:   { active: false, name: '點石成金', req: ['greed', 'fate'], color: 'linear-gradient(135deg, #eab308, #a78bfa)', icon: '🪙', desc: '【貪婪+命運】場上每個最高星級塔每秒產生 2 金幣，召喚塔時 5% 機率直接召喚出當前場上最高等級的塔' },
-            bounty:  { active: false, name: '賞金獵手', req: ['swift', 'greed'], color: 'linear-gradient(135deg, #22c55e, #eab308)', icon: '🎯', desc: '【迅捷+貪婪】防禦塔累計發射 50 發子彈後標記懸賞目標，擊殺獲得 5 倍金幣' }
-        },
-        rerollsLeft: 2,
+        gatling: { active: false, name: '加特林機槍', req: ['fury', 'swift'], color: 'linear-gradient(135deg, #ef4444, #22c55e)', icon: '🔫', desc: '[狂暴]+[迅捷] 所有塔攻速與攻擊力均等化，每擊中三次額外分裂出追蹤彈' },
+        shatter: { active: false, name: '碎冰擊', req: ['fury', 'frost'], color: 'linear-gradient(135deg, #ef4444, #3b82f6)', icon: '🧊', desc: '[狂暴]+[霜凍] 冰緩/凍結傷害 +30%，有 5% 機率秒殺非 Boss' },
+        midas:   { active: false, name: '點金術', req: ['greed', 'fate'], color: 'linear-gradient(135deg, #eab308, #a78bfa)', icon: '🪙', desc: '[貪婪]+[命運] 升級塔時有機會讓造價減 2 成，且有 5% 機率掉落雙倍代幣' },
+        bounty:  { active: false, name: '賞金獵手', req: ['swift', 'greed'], color: 'linear-gradient(135deg, #22c55e, #eab308)', icon: '🎯', desc: '[迅捷]+[貪婪] 每擊殺 50 隻怪隨機標記目標，擊殺拿 5 倍' },
+        plunder: { active: false, name: '劫掠', req: ['fury', 'greed'], color: 'linear-gradient(135deg, #ef4444, #eab308)', icon: '🪓', desc: '[狂暴]+[貪婪] 每次攻擊有 10% 機率掉落 2 金幣' },
+        execution: { active: false, name: '斬殺', req: ['fury', 'fate'], color: 'linear-gradient(135deg, #ef4444, #a78bfa)', icon: '⚔️', desc: '[狂暴]+[命運] 對血量低於 25% 敵人造成 300% 額外傷害' },
+        blizzard: { active: false, name: '暴風雪', req: ['swift', 'frost'], color: 'linear-gradient(135deg, #22c55e, #3b82f6)', icon: '❄️', desc: '[迅捷]+[霜凍] 凍結狀態下，敵人額外受到 50% 傷害' },
+        timewarp: { active: false, name: '時間回溯', req: ['swift', 'fate'], color: 'linear-gradient(135deg, #22c55e, #a78bfa)', icon: '⏳', desc: '[迅捷]+[命運] 攻擊時有 15% 機率重置技能冷卻' },
+        frostvault: { active: false, name: '冰霜金庫', req: ['frost', 'greed'], color: 'linear-gradient(135deg, #3b82f6, #eab308)', icon: '🧊', desc: '[霜凍]+[貪婪] 冰緩狀態下，敵人額外受到 5 點傷害' },
+        absolutezero: { active: false, name: '絕對零度', req: ['frost', 'fate'], color: 'linear-gradient(135deg, #3b82f6, #a78bfa)', icon: '🥶', desc: '[霜凍]+[命運] 每 15 秒凍結全場敵人 3 秒' }
+    },
+        rerollsLeft: 2 + ((typeof playerProfile !== 'undefined' && playerProfile.playerUpgrades?.rerolls) ? playerProfile.playerUpgrades.rerolls - 1 : 0),
         totalShots: 0,
         bountyTargetId: null,
         passiveGoldTimer: 0
@@ -2863,7 +3010,7 @@ const RARITY_COLORS = {
 };
 
 function renderShop() {
-    document.getElementById('shop-coins').innerText = playerProfile.gameCoins;
+    document.getElementById('shop-coins').innerText = formatMoney(playerProfile.gameCoins);
     const shopList = document.getElementById('shop-list');
     shopList.innerHTML = '';
 
@@ -2909,7 +3056,7 @@ function drawGacha() {
     }
     
     playerProfile.gameCoins -= 500;
-    document.getElementById('shop-coins').innerText = playerProfile.gameCoins;
+    document.getElementById('shop-coins').innerText = formatMoney(playerProfile.gameCoins);
     
     const r = Math.random() * 100;
     let pulledRarity = 'N';
@@ -2933,14 +3080,41 @@ function drawGacha() {
     }
     
     saveProfile();
-    document.getElementById('shop-coins').innerText = playerProfile.gameCoins;
+    document.getElementById('shop-coins').innerText = formatMoney(playerProfile.gameCoins);
     renderShop();
 }
 
+
+function renderRelics() {
+    const list = document.getElementById('backpack-relics-grid');
+    if (!list) return;
+    list.innerHTML = '';
+    if (!playerProfile.ownedRelics || playerProfile.ownedRelics.length === 0) {
+        list.innerHTML = '<div style="color: var(--text-secondary); grid-column: 1 / -1;">尚未獲得任何通關遺物</div>';
+        return;
+    }
+    
+    playerProfile.ownedRelics.forEach(relicId => {
+        let r = RELICS_DATA[relicId];
+        if (!r) return;
+        let card = document.createElement('div');
+        card.className = 'item-card';
+        card.innerHTML = `
+            <div class="item-icon">${r.icon}</div>
+            <div class="item-info">
+                <div class="item-name" style="color: #fbbf24;">${r.name}</div>
+                <div class="item-desc">${r.desc}</div>
+            </div>
+        `;
+        list.appendChild(card);
+    });
+}
+
 function renderBackpack() {
-    document.getElementById('backpack-coins').innerText = playerProfile.gameCoins;
+    document.getElementById('backpack-coins').innerText = formatMoney(playerProfile.gameCoins);
     const grid = document.getElementById('backpack-grid');
     grid.innerHTML = '';
+    renderRelics();
     
     playerProfile.ownedTowers.forEach(type => {
         const data = TOWER_DATA[type];
@@ -3057,7 +3231,7 @@ function renderEncyclopedia() {
             fury:  { name: '狂怒', color: '#ef4444', icon: '🔥', baseDesc: '每級傷害 +15% 爆擊率 +5%', ultName: '火山爆發', ultDesc: '爆擊引發 200% 範圍物理傷害' },
             swift: { name: '迅捷', color: '#22c55e', icon: '⚡', baseDesc: '每級攻速 +20%', ultName: '幻影連擊', ultDesc: '同目標連續攻擊傷害疊加 +150%' },
             frost: { name: '冰霜', color: '#3b82f6', icon: '❄️', baseDesc: '減速 +8% 且緩速範圍變大', ultName: '絕對零度', ultDesc: '減速達 60% 時凍結目標 2 秒，凍結時傷害 +100%' },
-            greed: { name: '貪婪', color: '#eab308', icon: '💰', baseDesc: '金幣 +30% 升級成本降 12%', ultName: '利息效應', ultDesc: '每波結束發放餘額 30% 利息(上限 100)' },
+            greed: { name: '貪婪', color: '#eab308', icon: '💰', baseDesc: '金幣 +30% 升級成本降 12%', ultName: '利息效應', ultDesc: '每波結束發放餘額 30% 利息(無上限)' },
             fate:  { name: '命運', color: '#a78bfa', icon: '🎲', baseDesc: '升星機率 +10% 且抽塔格數 +2', ultName: '神之眷顧', ultDesc: '合成時有 20% 機率直接跳階 +2 星' }
         };
         
@@ -3217,4 +3391,223 @@ function settleImmediately() {
     setTimeout(() => {
         notification.remove();
     }, 4000);
+}
+
+// ==========================================
+// 11. 新手教學與通關系統 (Tutorial & Victory)
+// ==========================================
+let tutorialStep = 1;
+const tutorialTexts = [
+    "這是一款融合防禦塔的抽卡塔防遊戲。<br><br>戰鬥中，你可以花費金幣召喚防禦塔。只要<b>拖曳兩座等級與種類相同的防禦塔</b>，就可以將其【合成】升級！",
+    "打倒敵人賺取金幣，每兩波結束可以選擇【派系天賦】。<br><br>特定派系升到滿級，並且擁有對應的前置派系，即可解鎖極其強大的<b>【融合技】</b>！",
+    "退出戰鬥後，可以使用獲得的「代幣」去<b>商店抽取各種全新防禦塔</b>，並在背包中挑選想要上陣的防禦塔。",
+    "<b>遊戲目標：</b><br><br>成功抵禦 <b>30 波</b> 敵人的進攻，擊殺最終 Boss 贏得勝利！<br><br>準備好就開始吧！"
+];
+
+function openTutorial() {
+    tutorialStep = 1;
+    updateTutorialUI();
+    document.getElementById('tutorial-modal').style.display = 'flex';
+}
+
+function closeTutorial() {
+    document.getElementById('tutorial-modal').style.display = 'none';
+    if (!playerProfile.hasSeenTutorial) {
+        playerProfile.hasSeenTutorial = true;
+        saveProfile();
+    }
+}
+
+function nextTutorialStep() {
+    if (tutorialStep < 4) {
+        tutorialStep++;
+        updateTutorialUI();
+    } else {
+        closeTutorial();
+    }
+}
+
+function updateTutorialUI() {
+    document.getElementById('tutorial-title').innerText = `🎓 新手教學 (${tutorialStep}/4)`;
+    document.getElementById('tutorial-content').innerHTML = tutorialTexts[tutorialStep - 1];
+    
+    let btn = document.getElementById('tutorial-next-btn');
+    if (tutorialStep === 4) {
+        btn.innerText = '開始遊戲！';
+    } else {
+        btn.innerText = '下一步 ▶';
+    }
+}
+
+function showVictoryScreen() {
+    gameState.isPaused = true;
+    clearTimeout(gameState.waveTimer);
+    if(gameState.spawnTimer) clearInterval(gameState.spawnTimer);
+    
+    // Stop all towers
+    projectiles = [];
+    
+    // Play big sound if possible
+    if(typeof SoundManager !== 'undefined' && SoundManager.audioCtx) {
+        SoundManager.playShoot('cannon');
+        setTimeout(() => SoundManager.playShoot('blackhole'), 200);
+    }
+    
+    document.getElementById('victory-modal').style.display = 'flex';
+}
+
+
+function claimVictory() {
+    playerProfile.gameCoins += LEVEL_CONFIG[gameState.level].clearReward;
+    
+    // First-time clear relic reward
+    if (gameState.level <= 2 && !playerProfile.ownedRelics.includes(gameState.level)) {
+        playerProfile.ownedRelics.push(gameState.level);
+        alert('恭喜首次通關！獲得通關遺物：' + RELICS_DATA[gameState.level].name);
+    }
+    
+    saveProfile();
+    
+    document.getElementById('victory-modal').style.display = 'none';
+    isGameOver = true;
+
+    switchView('home-view');
+}
+
+// Cheat function for testing
+window.skipToWave = function(targetWave) {
+    gameState.wave = targetWave;
+    gameState.gold += 10000;
+    updateUI();
+    console.log('Skipped to wave ' + targetWave);
+};
+
+// ==========================================
+// 12. 關卡選擇系統 (Level Select)
+// ==========================================
+function renderLevelSelect(mode = 'campaign') {
+    let container = document.getElementById('level-list');
+    if (!container) return;
+    container.innerHTML = '';
+    
+    let levelsToRender = mode === 'campaign' ? [1, 2] : [3];
+    
+    for (let i of levelsToRender) {
+        let conf = LEVEL_CONFIG[i];
+        let isUnlocked = (i === 1 || i === 3) || (playerProfile.highestLevelCleared >= (i - 1));
+        
+        let card = document.createElement('div');
+        card.style.width = '300px';
+        card.style.background = isUnlocked ? 'rgba(30,27,75,0.8)' : 'rgba(15,15,25,0.8)';
+        card.style.border = isUnlocked ? '2px solid #818cf8' : '2px solid #333';
+        card.style.borderRadius = '12px';
+        card.style.padding = '20px';
+        card.style.textAlign = 'center';
+        card.style.boxShadow = isUnlocked ? '0 0 20px rgba(129, 140, 248, 0.2)' : 'none';
+        card.style.filter = isUnlocked ? 'none' : 'grayscale(100%)';
+        card.style.transition = 'transform 0.2s';
+        
+        card.innerHTML = `
+            <h2 style="color: ${isUnlocked ? conf.theme.portalGlow : '#666'}; margin-bottom: 10px; font-size: 24px;">${conf.name}</h2>
+            <div style="height: 100px; background: ${conf.theme.bg}; border: 1px solid ${conf.theme.trackLine}; border-radius: 8px; margin-bottom: 15px; position: relative; overflow: hidden;">
+                <!-- Mini preview mock -->
+                <div style="position: absolute; top: 40px; left: -10px; width: 120%; height: 20px; background: ${conf.theme.trackOuter}; transform: rotate(-5deg);"></div>
+            </div>
+            <p style="color: ${isUnlocked ? '#cbd5e1' : '#666'}; font-size: 14px; line-height: 1.5; margin-bottom: 20px; min-height: 42px;">
+                ${isUnlocked ? conf.desc : '通關上一關卡解鎖'}
+            </p>
+            <p style="color: #fbbf24; margin-bottom: 20px; font-weight: bold; ${isUnlocked ? '' : 'display:none;'}">
+                通關獎勵：💰 ${conf.clearReward}
+            </p>
+            <button class="action-btn ${isUnlocked ? 'glow-btn' : ''}" ${isUnlocked ? '' : 'disabled'} style="width: 100%; padding: 12px; font-size: 16px; ${isUnlocked ? '' : 'border-color: #333; color: #555;'}" onclick="initBattle(${i})">
+                ${isUnlocked ? '進入戰鬥 ▶' : '🔒 尚未解鎖'}
+            </button>
+        `;
+        
+        if (isUnlocked) {
+            card.onmouseover = () => card.style.transform = 'translateY(-5px)';
+            card.onmouseout = () => card.style.transform = 'translateY(0)';
+        }
+        
+        container.appendChild(card);
+    }
+}
+
+// ==========================================
+// 13. 玩家天賦樹 (Tech Tree)
+// ==========================================
+
+const RELICS_DATA = {
+    1: { id: 1, name: '星際徽章', icon: '🌟', desc: '全防禦塔攻擊力 +10%', buff: (dmg) => dmg * 1.1 },
+    2: { id: 2, name: '腥紅核心', icon: '🩸', desc: '全防禦塔爆擊率 +5%', buffCrit: (crit) => crit + 0.05 }
+};
+
+const TECH_DATA = {
+    startGold: { name: '💰 初始資金', desc: '每級提升 50 點戰鬥初始資金', max: 10, baseCost: 1000 },
+    startLives: { name: '❤️ 堅韌生命', desc: '每級提升 5 點初始生命值', max: 10, baseCost: 1000 },
+    rerolls: { name: '🎲 命運掌控', desc: '每級增加 1 次局內天賦重置次數', max: 10, baseCost: 1500 },
+    discount: { name: '🔨 建築大師', desc: '每級降低 2% 召喚與升級成本', max: 10, baseCost: 2000 }
+};
+
+function renderTechTree() {
+    let container = document.getElementById('tech-list');
+    if (!container) return;
+    
+    document.getElementById('tech-coins').innerText = formatMoney(playerProfile.gameCoins);
+    container.innerHTML = '';
+    
+    if(!playerProfile.playerUpgrades) {
+        playerProfile.playerUpgrades = { startGold: 1, startLives: 1, rerolls: 1, discount: 1 };
+    }
+    
+    Object.keys(TECH_DATA).forEach(key => {
+        let data = TECH_DATA[key];
+        let currentLevel = playerProfile.playerUpgrades[key] || 1;
+        let isMax = currentLevel >= data.max;
+        
+        // Cost scaling: baseCost * 1.5 ^ (level - 1)
+        let cost = Math.floor(data.baseCost * Math.pow(1.5, currentLevel - 1));
+        
+        let card = document.createElement('div');
+        card.style.background = 'rgba(255,255,255,0.05)';
+        card.style.border = '1px solid rgba(250, 204, 21, 0.2)';
+        card.style.borderRadius = '12px';
+        card.style.padding = '20px';
+        card.style.display = 'flex';
+        card.style.justifyContent = 'space-between';
+        card.style.alignItems = 'center';
+        
+        card.innerHTML = `
+            <div style="flex: 1;">
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+                    <h3 style="color: #fef08a; font-size: 20px; margin: 0;">${data.name}</h3>
+                    <span style="background: ${isMax ? '#eab308' : '#333'}; color: ${isMax ? '#000' : '#fff'}; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;">
+                        Lv.${currentLevel}${isMax ? ' (MAX)' : ''}
+                    </span>
+                </div>
+                <p style="color: #cbd5e1; font-size: 14px; margin: 0;">${data.desc}</p>
+            </div>
+            <button class="action-btn ${isMax ? '' : 'glow-btn'}" 
+                onclick="upgradeTech('${key}')" 
+                ${(isMax || playerProfile.gameCoins < cost) ? 'disabled' : ''} 
+                style="min-width: 150px; padding: 12px; border-color: ${isMax ? '#333' : 'rgba(234, 179, 8, 0.5)'}; color: ${isMax ? '#666' : '#fde047'};">
+                ${isMax ? '已滿級' : '升級 (💰 ' + cost + ')'}
+            </button>
+        `;
+        
+        container.appendChild(card);
+    });
+}
+
+window.upgradeTech = function(key) {
+    let data = TECH_DATA[key];
+    let currentLevel = playerProfile.playerUpgrades[key] || 1;
+    let cost = Math.floor(data.baseCost * Math.pow(1.5, currentLevel - 1));
+    
+    if (playerProfile.gameCoins >= cost && currentLevel < data.max) {
+        playerProfile.gameCoins -= cost;
+        playerProfile.playerUpgrades[key] = currentLevel + 1;
+        saveProfile();
+        renderTechTree();
+    }
 }

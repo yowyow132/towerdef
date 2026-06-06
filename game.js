@@ -291,7 +291,16 @@ function initBattle(levelId = 1) {
     restartGame();
     gameState.level = levelId;
     PATH_POINTS = LEVEL_CONFIG[levelId].path;
-    document.getElementById('canvas-wrapper').style.background = LEVEL_CONFIG[levelId].theme.bg; // 重置單局進度
+    document.getElementById('canvas-wrapper').style.background = LEVEL_CONFIG[levelId].theme.bg;
+    
+    if(typeof initSkillUI !== 'undefined') initSkillUI();
+    if(typeof COMMANDER_SKILLS !== 'undefined') {
+        for(let s in COMMANDER_SKILLS) COMMANDER_SKILLS[s].lastUsed = 0;
+        overclockTimer = 0;
+        midasTimer = 0;
+        singularityTimer = 0;
+    }
+    
     switchView('battle-view');
 }
 
@@ -706,6 +715,19 @@ class Enemy {
         
         // 無盡模式倍率大幅強化 (曲線陡峭上升)
         let actualGrowthRate = gameState.level === 3 ? hpGrowthRate * 1.15 : hpGrowthRate;
+        
+        this.eliteAffix = null;
+        this.shieldHits = 0;
+        this.lastBlinkTime = 0;
+        
+        if (wave >= 15 && Math.random() < 0.15) {
+            const affixes = ['Shielded', 'Blink', 'Healer', 'Kamikaze'];
+            this.eliteAffix = affixes[Math.floor(Math.random() * affixes.length)];
+            calculatedHp *= 1.8; // Elite hp bonus
+            if (this.eliteAffix === 'Shielded') {
+                this.shieldHits = 10 + Math.floor(wave / 5);
+            }
+        }
         const waveHpMultiplier = Math.pow(actualGrowthRate, wave - 1);
         let calculatedHp = Math.round(baseHp * waveHpMultiplier);
 
@@ -803,6 +825,13 @@ class Enemy {
 
     damage(amount, color = '#f3f4f6', isCrit = false) {
         if (this.hp <= 0) return;
+        
+        if (this.eliteAffix === 'Shielded' && this.shieldHits > 0) {
+            this.shieldHits--;
+            if (typeof SoundManager !== 'undefined') SoundManager.playHit(false);
+            damageTexts.push({ text: '🛡️ -1', x: this.x, y: this.y - 15, color: '#38bdf8', alpha: 1.0, life: 20, scale: 1 });
+            return;
+        }
         if (typeof SoundManager !== 'undefined') SoundManager.playHit(isCrit);
         
         if (rogueState.fusions.frostvault && rogueState.fusions.frostvault.active) {
@@ -868,9 +897,22 @@ class Enemy {
         
         // 貪婪派系加成 (每等 +30%)
         let greedBonus = 1 + rogueState.factions.greed.level * 0.30;
+        if (typeof midasTimer !== 'undefined' && midasTimer > 0) greedBonus *= 10;
         goldReward = Math.round(goldReward * greedBonus);
 
         // 賞金獵手 5 倍金幣
+        if (this.eliteAffix) {
+            ctx.fillStyle = '#fff';
+            ctx.font = '14px Arial';
+            ctx.textAlign = 'center';
+            let icon = '';
+            if (this.eliteAffix === 'Shielded') icon = '🛡️' + this.shieldHits;
+            if (this.eliteAffix === 'Blink') icon = '⚡';
+            if (this.eliteAffix === 'Healer') icon = '💚';
+            if (this.eliteAffix === 'Kamikaze') icon = '💣';
+            ctx.fillText(icon, this.x, this.y - this.radius - 8);
+        }
+        
         if (this.isBountyTarget) {
             goldReward *= 5;
             rogueState.bountyTargetId = null;
@@ -886,6 +928,16 @@ class Enemy {
         }
 
         addGold(goldReward);
+        
+        if (this.eliteAffix === 'Kamikaze') {
+            createExplosion(this.x, this.y, '#ef4444', 50);
+            for (let t of fieldSlots) {
+                if (t && Math.hypot(t.x - this.x, t.y - this.y) <= 100) {
+                    t.cooldown = Math.max(t.cooldown, 2000); // Disable tower for 2 seconds
+                    damageTexts.push({ text: '⚡ 癱瘓', x: t.x, y: t.y - 20, color: '#fca5a5', alpha: 1.0, life: 40 });
+                }
+            }
+        }
 
         // 擊殺特效
         createExplosion(this.x, this.y, this.color, this.isBoss ? 30 : 15);
@@ -894,6 +946,23 @@ class Enemy {
 
     update(timeStep) {
         // 毒液效果
+        if (this.eliteAffix === 'Blink') {
+            if (Date.now() - this.lastBlinkTime > 4000 && !this.isFrozen && this.slowAmount < 0.5) {
+                this.distanceTraveled += 30; // Blink forward
+                this.lastBlinkTime = Date.now();
+                createExplosion(this.x, this.y, '#eab308', 10);
+            }
+        }
+        
+        if (this.eliteAffix === 'Healer' && Math.random() < 0.05 && !this.isFrozen) {
+            for (let other of enemies) {
+                if (other !== this && other.hp > 0 && Math.hypot(other.x - this.x, other.y - this.y) <= 100) {
+                    other.hp = Math.min(other.maxHp, other.hp + (other.maxHp * 0.05 * gameState.speed));
+                    createExplosion(other.x, other.y + 10, '#22c55e', 2);
+                }
+            }
+        }
+        
         if (this.poisonTimer > 0) {
             this.poisonTimer -= (16.6 * gameState.speed);
             this.hp -= (this.poisonDmg / 60) * gameState.speed;
@@ -963,7 +1032,19 @@ class Enemy {
             
             // 標記死亡/移除
             this.hp = 0;
-            if (this.isBountyTarget) {
+            if (this.eliteAffix) {
+            ctx.fillStyle = '#fff';
+            ctx.font = '14px Arial';
+            ctx.textAlign = 'center';
+            let icon = '';
+            if (this.eliteAffix === 'Shielded') icon = '🛡️' + this.shieldHits;
+            if (this.eliteAffix === 'Blink') icon = '⚡';
+            if (this.eliteAffix === 'Healer') icon = '💚';
+            if (this.eliteAffix === 'Kamikaze') icon = '💣';
+            ctx.fillText(icon, this.x, this.y - this.radius - 8);
+        }
+        
+        if (this.isBountyTarget) {
                 rogueState.bountyTargetId = null;
             }
             
@@ -984,6 +1065,18 @@ class Enemy {
         ctx.shadowOffsetY = 4;
 
         // 懸賞標記繪製 (如果該怪是懸賞目標)
+        if (this.eliteAffix) {
+            ctx.fillStyle = '#fff';
+            ctx.font = '14px Arial';
+            ctx.textAlign = 'center';
+            let icon = '';
+            if (this.eliteAffix === 'Shielded') icon = '🛡️' + this.shieldHits;
+            if (this.eliteAffix === 'Blink') icon = '⚡';
+            if (this.eliteAffix === 'Healer') icon = '💚';
+            if (this.eliteAffix === 'Kamikaze') icon = '💣';
+            ctx.fillText(icon, this.x, this.y - this.radius - 8);
+        }
+        
         if (this.isBountyTarget) {
             ctx.fillStyle = '#eab308';
             ctx.font = 'bold 16px Outfit';
@@ -2346,7 +2439,131 @@ function drawGrid() {
     ctx.restore();
 }
 
+
+const COMMANDER_SKILLS = {
+    meteor: { cd: 30000, lastUsed: 0 },
+    overclock: { cd: 45000, lastUsed: 0 },
+    emp: { cd: 60000, lastUsed: 0 },
+    singularity: { cd: 60000, lastUsed: 0 },
+    midas: { cd: 90000, lastUsed: 0 }
+};
+
+const SKILL_DATA = {
+    meteor: { name: '隕石打擊', desc: '降下毀滅性的隕石，對大範圍敵人造成鉅額傷害。', icon: '🔥', rarity: 'rare' },
+    overclock: { name: '超頻過載', desc: '5秒內全場防禦塔攻擊速度翻倍。', icon: '⚡', rarity: 'epic' },
+    emp: { name: '全域靜止', desc: '凍結全場敵人3秒，並擊碎所有精英怪的次數護盾。', icon: '❄️', rarity: 'epic' },
+    singularity: { name: '奇點爆破', desc: '在畫面中央產生巨大黑洞，將全場敵人強制吸入並造成傷害。', icon: '🌌', rarity: 'legendary' },
+    midas: { name: '點石成金', desc: '啟動後5秒內，所有擊殺的敵人掉落賞金變為10倍。', icon: '💰', rarity: 'legendary' }
+};
+
+let midasTimer = 0;
+let singularityTimer = 0;
+
+let overclockTimer = 0;
+
+function initSkillUI() {
+    const container = document.getElementById('commander-skills');
+    if (!container) return;
+    container.innerHTML = '';
+    if (!playerProfile.ownedSkills) playerProfile.ownedSkills = ['meteor'];
+    
+    playerProfile.ownedSkills.forEach(skillId => {
+        let btn = document.createElement('button');
+        btn.className = 'skill-btn';
+        btn.id = 'skill-' + skillId;
+        btn.onclick = () => useSkill(skillId);
+        btn.innerHTML = `${SKILL_DATA[skillId].icon} ${SKILL_DATA[skillId].name.substring(0,2)}<br><span class="cd">RDY</span>`;
+        container.appendChild(btn);
+    });
+}
+
+function updateSkills(timeStep) {
+
+    if (overclockTimer > 0) overclockTimer -= timeStep * gameState.speed;
+    
+    for (let s in COMMANDER_SKILLS) {
+        let skill = COMMANDER_SKILLS[s];
+        let btn = document.getElementById('skill-' + s);
+        if(!btn) continue;
+        let cdSpan = btn.querySelector('.cd');
+        let remaining = skill.cd - (Date.now() - skill.lastUsed);
+        if (remaining <= 0) {
+            btn.classList.remove('on-cd');
+            cdSpan.innerText = 'RDY';
+        } else {
+            btn.classList.add('on-cd');
+            cdSpan.innerText = Math.ceil(remaining / 1000) + 's';
+        }
+    }
+}
+
+window.useSkill = function(skillId) {
+    if(gameState.isPaused || gameState.lives <= 0) return;
+    let skill = COMMANDER_SKILLS[skillId];
+    if (Date.now() - skill.lastUsed < skill.cd) return;
+    
+    if (skillId === 'meteor') {
+        if (enemies.length === 0) return;
+        let target = enemies.reduce((prev, current) => (prev.hp > current.hp) ? prev : current, enemies[0]);
+        createExplosion(target.x, target.y, '#ef4444', 150);
+        let dmg = 1000 * Math.pow(1.15, gameState.wave);
+        for (let e of enemies) {
+            if (e.hp > 0 && Math.hypot(e.x - target.x, e.y - target.y) <= 150) {
+                e.damage(dmg, '#ef4444', true);
+            }
+        }
+        if (typeof SoundManager !== 'undefined') SoundManager.playHit(true);
+    } 
+    else if (skillId === 'overclock') {
+        overclockTimer = 5000;
+        damageTexts.push({ text: '⚡ OVERCLOCK!', x: CANVAS_WIDTH/2, y: CANVAS_HEIGHT/2, color: '#facc15', alpha: 1.0, life: 100, scale: 2 });
+    }
+    else if (skillId === 'emp') {
+        createExplosion(CANVAS_WIDTH/2, CANVAS_HEIGHT/2, '#38bdf8', CANVAS_WIDTH);
+        for (let e of enemies) {
+            if (e.hp > 0) {
+                e.isFrozen = true;
+                e.frozenTimer = 3000;
+                e.shieldHits = 0;
+            }
+        }
+        damageTexts.push({ text: '❄️ EMP ACTIVATED!', x: CANVAS_WIDTH/2, y: CANVAS_HEIGHT/2, color: '#38bdf8', alpha: 1.0, life: 100, scale: 2 });
+    }
+    
+    
+    else if (skillId === 'singularity') {
+        singularityTimer = 3000;
+        damageTexts.push({ text: '🌌 SINGULARITY!', x: CANVAS_WIDTH/2, y: CANVAS_HEIGHT/2 - 50, color: '#4f46e5', alpha: 1.0, life: 100, scale: 2 });
+    }
+    else if (skillId === 'midas') {
+        midasTimer = 5000;
+        damageTexts.push({ text: '💰 MIDAS TOUCH!', x: CANVAS_WIDTH/2, y: CANVAS_HEIGHT/2 - 50, color: '#eab308', alpha: 1.0, life: 100, scale: 2 });
+    }
+    skill.lastUsed = Date.now();
+};
+
 function updateGame(timeStep) {
+    if (typeof midasTimer !== 'undefined' && midasTimer > 0) midasTimer -= timeStep * gameState.speed;
+    if (typeof singularityTimer !== 'undefined' && singularityTimer > 0) {
+        singularityTimer -= timeStep * gameState.speed;
+        let cx = CANVAS_WIDTH / 2;
+        let cy = CANVAS_HEIGHT / 2;
+        for (let e of enemies) {
+            if (e.hp > 0 && !e.isBoss) {
+                let dx = cx - e.x;
+                let dy = cy - e.y;
+                let d = Math.hypot(dx, dy);
+                if (d > 10) {
+                    e.x += (dx / d) * 3 * gameState.speed;
+                    e.y += (dy / d) * 3 * gameState.speed;
+                }
+                e.damage(5 * gameState.speed, '#4f46e5', false);
+            }
+        }
+        if (Math.random() < 0.2) createExplosion(cx + Math.random()*40-20, cy + Math.random()*40-20, '#4f46e5', 5);
+    }
+
+    if(typeof updateSkills !== "undefined") updateSkills(16.6);
     if (gameState.isPaused || gameState.lives <= 0) return;
       if (rogueState.fusions.absolutezero && rogueState.fusions.absolutezero.active) {
           rogueState.absoluteZeroTimer = (rogueState.absoluteZeroTimer || 0) + (16.6 * gameState.speed);
@@ -3012,7 +3229,10 @@ const RARITY_COLORS = {
 function renderShop() {
     document.getElementById('shop-coins').innerText = formatMoney(playerProfile.gameCoins);
     const shopList = document.getElementById('shop-list');
-    shopList.innerHTML = '';
+    const skillsList = document.getElementById('shop-skills-list');
+    
+    if(shopList) shopList.innerHTML = '';
+    if(skillsList) skillsList.innerHTML = '';
 
     const allTowers = Object.keys(TOWER_DATA);
     allTowers.forEach(type => {
@@ -3031,59 +3251,145 @@ function renderShop() {
             btn.innerHTML = `
                 <div style="font-size: 32px;">${data.emoji}</div>
                 <div style="font-weight: bold; color: ${RARITY_COLORS[data.rarity]}">${data.name} [${data.rarity}]</div>
-                <button class="action-btn" style="margin-top: 10px; width: 100%;" onclick="buyTower('${type}', ${price})">🪙 ${price}</button>
+                <div style="font-size: 12px; color: var(--text-secondary); margin: 5px 0 10px;">${data.desc}</div>
+                <button class="action-btn glow-btn" onclick="buyTower('${type}', ${price})" ${playerProfile.gameCoins < price ? 'disabled' : ''} style="width: 100%;">
+                    購買 (🪙 ${price})
+                </button>
             `;
-            shopList.appendChild(btn);
+            if(shopList) shopList.appendChild(btn);
+        }
+    });
+
+    if(!playerProfile.ownedSkills) playerProfile.ownedSkills = ['meteor'];
+    const allSkills = Object.keys(SKILL_DATA);
+    allSkills.forEach(type => {
+        if (!playerProfile.ownedSkills.includes(type)) {
+            const data = SKILL_DATA[type];
+            let price = data.rarity === 'rare' ? 2000 : (data.rarity === 'epic' ? 5000 : 15000);
+            
+            const btn = document.createElement('div');
+            btn.className = 'shop-item';
+            btn.style.background = 'rgba(255,255,255,0.05)';
+            btn.style.padding = '15px';
+            btn.style.borderRadius = '10px';
+            btn.style.textAlign = 'center';
+            btn.style.border = `1px solid ${RARITY_COLORS[data.rarity]}50`;
+
+            btn.innerHTML = `
+                <div style="font-size: 32px;">${data.icon}</div>
+                <div style="font-weight: bold; color: ${RARITY_COLORS[data.rarity]}">${data.name}</div>
+                <div style="font-size: 12px; color: var(--text-secondary); margin: 5px 0 10px;">${data.desc}</div>
+                <button class="action-btn glow-btn" onclick="buySkill('${type}', ${price})" ${playerProfile.gameCoins < price ? 'disabled' : ''} style="width: 100%;">
+                    購買 (🪙 ${price})
+                </button>
+            `;
+            if(skillsList) skillsList.appendChild(btn);
         }
     });
 }
 
-function buyTower(type, price) {
+window.buyTower = function(type, price) {
     if (playerProfile.gameCoins >= price) {
         playerProfile.gameCoins -= price;
         playerProfile.ownedTowers.push(type);
         saveProfile();
         renderShop();
     } else {
-        alert("遊戲幣不足！");
+        alert('宇宙幣不足');
+    }
+}
+
+window.buySkill = function(type, price) {
+    if (playerProfile.gameCoins >= price) {
+        playerProfile.gameCoins -= price;
+        playerProfile.ownedSkills.push(type);
+        saveProfile();
+        renderShop();
+    } else {
+        alert('宇宙幣不足');
     }
 }
 
 function drawGacha() {
     if (playerProfile.gameCoins < 500) {
-        alert("遊戲幣不足！");
+        alert('宇宙幣不足');
         return;
     }
     
     playerProfile.gameCoins -= 500;
     document.getElementById('shop-coins').innerText = formatMoney(playerProfile.gameCoins);
     
-    const r = Math.random() * 100;
-    let pulledRarity = 'N';
-    if (r < 5) pulledRarity = 'UR';
-    else if (r < 20) pulledRarity = 'SR';
-    else if (r < 50) pulledRarity = 'R';
-    
-    const pool = Object.keys(TOWER_DATA).filter(k => TOWER_DATA[k].rarity === pulledRarity);
-    const pulledType = pool[Math.floor(Math.random() * pool.length)];
-    const data = TOWER_DATA[pulledType];
-    
     const resultDiv = document.getElementById('gacha-result');
-    resultDiv.style.color = RARITY_COLORS[pulledRarity];
     
-    if (playerProfile.ownedTowers.includes(pulledType)) {
-        playerProfile.gameCoins += 250; // Refund half
-        resultDiv.innerHTML = `抽到了 ${data.emoji} ${data.name} [${pulledRarity}] <br><span style="font-size: 14px; color: var(--text-secondary);">已擁有，退還 250 🪙</span>`;
+    let rollType = Math.random();
+    let isSkill = rollType > 0.85;
+    let isFaction = rollType < 0.35;
+    
+    if (isSkill) {
+        let skillKeys = Object.keys(SKILL_DATA);
+        let picked = skillKeys[Math.floor(Math.random() * skillKeys.length)];
+        let data = SKILL_DATA[picked];
+        
+        if(!playerProfile.ownedSkills) playerProfile.ownedSkills = ['meteor'];
+        let isOwned = playerProfile.ownedSkills.includes(picked);
+        
+        if (isOwned) {
+            playerProfile.gameCoins += 500;
+            resultDiv.innerHTML = `<div style="font-size:48px;">${data.icon}</div>
+                <div style="color:${RARITY_COLORS[data.rarity]}; font-size:20px; margin-top:10px;">${data.name} (已擁有)</div>
+                <div style="color:#fb923c; font-size:16px;">轉化為 500 宇宙幣</div>`;
+        } else {
+            playerProfile.ownedSkills.push(picked);
+            resultDiv.innerHTML = `<div style="font-size:48px;">${data.icon}</div>
+                <div style="color:${RARITY_COLORS[data.rarity]}; font-size:24px; font-weight:bold; margin-top:10px;">解鎖技能：${data.name}</div>
+                <div style="color:var(--text-secondary); font-size:14px; margin-top:10px;">${data.desc}</div>`;
+        }
+    } else if (isFaction && typeof FACTION_DATA !== 'undefined') {
+        let keys = Object.keys(FACTION_DATA);
+        let picked = keys[Math.floor(Math.random() * keys.length)];
+        let data = FACTION_DATA[picked];
+        
+        let isOwned = playerProfile.ownedFactions.includes(picked);
+        
+        if (isOwned) {
+            playerProfile.gameCoins += 300;
+            resultDiv.innerHTML = `<div style="font-size:48px; color:${data.color}">${data.icon}</div>
+                <div style="color:${data.color}; font-size:20px; margin-top:10px;">${data.name}派系 (已擁有)</div>
+                <div style="color:#fb923c; font-size:16px;">轉化為 300 宇宙幣</div>`;
+        } else {
+            playerProfile.ownedFactions.push(picked);
+            resultDiv.innerHTML = `<div style="font-size:48px; color:${data.color}">${data.icon}</div>
+                <div style="color:${data.color}; font-size:24px; font-weight:bold; margin-top:10px;">解鎖派系：${data.name}</div>`;
+        }
     } else {
-        playerProfile.ownedTowers.push(pulledType);
-        resultDiv.innerHTML = `恭喜獲得新塔！<br>${data.emoji} ${data.name} [${pulledRarity}]`;
+        const r = Math.random() * 100;
+        let pulledRarity = 'N';
+        if (r < 5) pulledRarity = 'UR';
+        else if (r < 20) pulledRarity = 'SR';
+        else if (r < 50) pulledRarity = 'R';
+        
+        const pool = Object.keys(TOWER_DATA).filter(k => TOWER_DATA[k].rarity === pulledRarity);
+        const picked = pool[Math.floor(Math.random() * pool.length)];
+        const data = TOWER_DATA[picked];
+        
+        let isOwned = playerProfile.ownedTowers.includes(picked);
+        
+        if (isOwned) {
+            let compensate = { N: 50, R: 100, SR: 500, UR: 2000 }[pulledRarity];
+            playerProfile.gameCoins += compensate;
+            resultDiv.innerHTML = `<div style="font-size:48px;">${data.emoji}</div>
+                <div style="color:${RARITY_COLORS[pulledRarity]}; font-size:20px; margin-top:10px;">${data.name} [${pulledRarity}] (已擁有)</div>
+                <div style="color:#fb923c; font-size:16px;">轉化為 ${compensate} 宇宙幣</div>`;
+        } else {
+            playerProfile.ownedTowers.push(picked);
+            resultDiv.innerHTML = `<div style="font-size:48px;">${data.emoji}</div>
+                <div style="color:${RARITY_COLORS[pulledRarity]}; font-size:24px; font-weight:bold; margin-top:10px;">解鎖新塔：${data.name} [${pulledRarity}]</div>
+                <div style="color:var(--text-secondary); font-size:14px; margin-top:10px;">${data.desc}</div>`;
+        }
     }
-    
     saveProfile();
     document.getElementById('shop-coins').innerText = formatMoney(playerProfile.gameCoins);
-    renderShop();
 }
-
 
 function renderRelics() {
     const list = document.getElementById('backpack-relics-grid');
@@ -3141,7 +3447,41 @@ function renderBackpack() {
         grid.appendChild(item);
     });
 
-    // ====== 渲染天賦派系 ======
+    // Remove old duplicate skill grids if they exist
+    document.querySelectorAll('#backpack-skills-title').forEach(el => el.remove());
+    document.querySelectorAll('#backpack-skills-grid').forEach(el => el.remove());
+
+    let sTitle = document.createElement('h3');
+    sTitle.id = 'backpack-skills-title';
+    sTitle.innerText = '已擁有指揮官技能';
+    sTitle.style.marginTop = '30px';
+    sTitle.style.color = '#818cf8';
+    
+    let skillGridEl = document.createElement('div');
+    skillGridEl.className = 'upgrades-grid';
+    skillGridEl.id = 'backpack-skills-grid';
+    skillGridEl.style.marginTop = '10px';
+    
+    grid.parentNode.insertBefore(sTitle, grid.nextSibling);
+    grid.parentNode.insertBefore(skillGridEl, sTitle.nextSibling);
+
+    if(!playerProfile.ownedSkills) playerProfile.ownedSkills = ['meteor'];
+    playerProfile.ownedSkills.forEach(key => {
+        const data = SKILL_DATA[key];
+        const item = document.createElement('div');
+        item.className = 'backpack-item';
+        item.style.background = 'rgba(255,255,255,0.05)';
+        item.style.padding = '15px';
+        item.style.borderRadius = '10px';
+        item.style.textAlign = 'center';
+        item.style.border = `1px solid ${RARITY_COLORS[data.rarity]}50`;
+        item.innerHTML = `
+            <div style="font-size: 36px; margin-bottom: 5px;">${data.icon}</div>
+            <div style="font-weight: bold; color: ${RARITY_COLORS[data.rarity]}">${data.name}</div>
+        `;
+        skillGridEl.appendChild(item);
+    });
+
     const facGrid = document.getElementById('backpack-factions-grid');
     if (facGrid) {
         facGrid.innerHTML = '';
@@ -3159,9 +3499,8 @@ function renderBackpack() {
             card.style.filter = isOwned ? 'none' : 'grayscale(100%) opacity(0.5)';
             
             card.innerHTML = `
-                <div style="font-size: 32px; margin-bottom: 10px; text-align: center;">${isOwned ? data.icon : '❓'}</div>
-                <div style="font-weight: bold; color: ${isOwned ? data.color : '#fff'}; font-size: 18px; text-align: center;">${isOwned ? data.name : '未知派系'}</div>
-                <div style="font-size: 11px; color: var(--text-secondary); margin-top: 5px; text-align: center;">${isOwned ? data.desc : '尚在封印中，等待解鎖'}</div>
+                <div style="font-size: 32px; margin-bottom: 10px; text-align: center;">${isOwned ? data.icon : '?'}</div>
+                <div style="font-weight: bold; color: ${isOwned ? data.color : '#fff'}; text-align: center;">${data.name}</div>
             `;
             facGrid.appendChild(card);
         });
@@ -3179,7 +3518,7 @@ function upgradeTowerProfile(type) {
 }
 
 function renderEncyclopedia() {
-    // 1. 渲染塔圖鑑
+    // 1. 防禦塔
     const tList = document.getElementById('ency-towers');
     tList.innerHTML = '';
     Object.keys(TOWER_DATA).forEach(type => {
@@ -3191,23 +3530,63 @@ function renderEncyclopedia() {
         card.style.borderRadius = '10px';
         card.style.filter = isOwned ? 'none' : 'grayscale(100%) opacity(0.5)';
         card.innerHTML = `
-            <div style="font-size: 32px;">${isOwned ? data.emoji : '❓'}</div>
+            <div style="font-size: 32px;">${isOwned ? data.emoji : '?'}</div>
             <div style="font-weight: bold; color: ${isOwned ? RARITY_COLORS[data.rarity] : '#fff'};">${isOwned ? data.name : '未知'} [${data.rarity}]</div>
-            <div style="font-size: 12px; color: var(--text-secondary); margin-top: 5px;">${isOwned ? data.desc : '未解鎖的防禦塔'}</div>
+            <div style="font-size: 12px; color: var(--text-secondary); margin-top: 5px;">${isOwned ? data.desc : '尚待解鎖'}</div>
         `;
         tList.appendChild(card);
     });
 
-    // 2. 渲染敵人圖鑑
+    // 2. 指揮官技能
+    document.querySelectorAll('#ency-skills-title').forEach(el => el.remove());
+    document.querySelectorAll('#ency-skills-grid').forEach(el => el.remove());
+
+    let sectionTitle = document.createElement('h3');
+    sectionTitle.id = 'ency-skills-title';
+    sectionTitle.innerText = '指揮官技能 (Commander Skills)';
+    sectionTitle.style.marginBottom = '15px';
+    sectionTitle.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
+    sectionTitle.style.paddingBottom = '5px';
+    sectionTitle.style.color = '#818cf8';
+    
+    let sList = document.createElement('div');
+    sList.className = 'ency-list';
+    sList.id = 'ency-skills-grid';
+    sList.style.display = 'grid';
+    sList.style.gridTemplateColumns = 'repeat(auto-fill, minmax(250px, 1fr))';
+    sList.style.gap = '15px';
+    sList.style.marginBottom = '30px';
+    
+    tList.parentNode.insertBefore(sectionTitle, tList.nextSibling);
+    tList.parentNode.insertBefore(sList, sectionTitle.nextSibling);
+
+    if(!playerProfile.ownedSkills) playerProfile.ownedSkills = ['meteor'];
+    Object.keys(SKILL_DATA).forEach(key => {
+        const data = SKILL_DATA[key];
+        const isOwned = playerProfile.ownedSkills.includes(key);
+        const card = document.createElement('div');
+        card.style.background = 'rgba(255,255,255,0.05)';
+        card.style.padding = '15px';
+        card.style.borderRadius = '10px';
+        card.style.filter = isOwned ? 'none' : 'grayscale(100%) opacity(0.5)';
+        card.innerHTML = `
+            <div style="font-size: 32px;">${isOwned ? data.icon : '?'}</div>
+            <div style="font-weight: bold; color: ${isOwned ? RARITY_COLORS[data.rarity] : '#fff'};">${isOwned ? data.name : '未知技能'} [${data.rarity}]</div>
+            <div style="font-size: 12px; color: var(--text-secondary); margin-top: 5px;">${isOwned ? data.desc : '尚待解鎖'}</div>
+        `;
+        sList.appendChild(card);
+    });
+
+    // 3. 敵人圖鑑
     const eList = document.getElementById('ency-enemies');
     if (eList) {
         eList.innerHTML = '';
         const enemiesData = [
-            { name: '普通怪', color: '#a78bfa', desc: '最常見的敵人，各項屬性均衡。' },
-            { name: '疾風怪', color: '#10b981', desc: '跑速極快 (1.65倍)，但血量較少 (55%)。' },
-            { name: '裝甲怪', color: '#94a3b8', desc: '移動緩慢 (0.5倍)，但防禦極高血量厚實 (230%)。' },
-            { name: '治癒怪', color: '#ec4899', desc: '血量偏高 (135%) 且會隨時間持續恢復生命。' },
-            { name: 'Boss 首領', color: '#ef4444', desc: '每 10 波出現，血量極為誇張，擊殺可獲得大量獎勵。' }
+            { name: '普通怪', color: '#a78bfa', desc: '最常見敵人，移動速度中等。' },
+            { name: '衝刺怪', color: '#10b981', desc: '跑速快 (1.65倍)，血量較低 (55%)。' },
+            { name: '重甲怪', color: '#94a3b8', desc: '跑速慢 (0.5倍)，血量極高 (230%)。' },
+            { name: '分裂怪', color: '#ec4899', desc: '血量中等 (135%) ，死後會分裂產生子怪。' },
+            { name: 'Boss 怪', color: '#ef4444', desc: '每 10 波出現一次，血量極厚，會隨波數大幅成長。' }
         ];
         
         enemiesData.forEach(e => {
@@ -3216,81 +3595,36 @@ function renderEncyclopedia() {
             card.style.padding = '15px';
             card.style.borderRadius = '10px';
             card.innerHTML = `
-                <div style="font-weight: bold; color: ${e.color}; font-size: 18px; margin-bottom: 5px;">⏹ ${e.name}</div>
+                <div style="font-weight: bold; color: ${e.color}; font-size: 18px; margin-bottom: 5px;">👾 ${e.name}</div>
                 <div style="font-size: 12px; color: var(--text-secondary);">${e.desc}</div>
             `;
             eList.appendChild(card);
         });
     }
 
-    // 3. 渲染派系天賦圖鑑
+    // 4. 派系圖鑑
     const facList = document.getElementById('ency-factions');
     if (facList) {
         facList.innerHTML = '';
-        const factions = {
-            fury:  { name: '狂怒', color: '#ef4444', icon: '🔥', baseDesc: '每級傷害 +15% 爆擊率 +5%', ultName: '火山爆發', ultDesc: '爆擊引發 200% 範圍物理傷害' },
-            swift: { name: '迅捷', color: '#22c55e', icon: '⚡', baseDesc: '每級攻速 +20%', ultName: '幻影連擊', ultDesc: '同目標連續攻擊傷害疊加 +150%' },
-            frost: { name: '冰霜', color: '#3b82f6', icon: '❄️', baseDesc: '減速 +8% 且緩速範圍變大', ultName: '絕對零度', ultDesc: '減速達 60% 時凍結目標 2 秒，凍結時傷害 +100%' },
-            greed: { name: '貪婪', color: '#eab308', icon: '💰', baseDesc: '金幣 +30% 升級成本降 12%', ultName: '利息效應', ultDesc: '每波結束發放餘額 30% 利息(無上限)' },
-            fate:  { name: '命運', color: '#a78bfa', icon: '🎲', baseDesc: '升星機率 +10% 且抽塔格數 +2', ultName: '神之眷顧', ultDesc: '合成時有 20% 機率直接跳階 +2 星' }
-        };
-        
+        const factions = typeof FACTION_DATA !== 'undefined' ? FACTION_DATA : {};
         Object.keys(factions).forEach(key => {
-            const f = factions[key];
+            const data = factions[key];
+            const isOwned = playerProfile.ownedFactions && playerProfile.ownedFactions.includes(key);
             const card = document.createElement('div');
             card.style.background = 'rgba(255,255,255,0.05)';
             card.style.padding = '15px';
             card.style.borderRadius = '10px';
+            card.style.filter = isOwned ? 'none' : 'grayscale(100%) opacity(0.5)';
             card.innerHTML = `
-                <div style="font-weight: bold; color: ${f.color}; font-size: 16px; margin-bottom: 5px;">${f.icon} ${f.name}系</div>
-                <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">${f.baseDesc}</div>
-                <div style="font-size: 12px; color: #f472b6; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 5px;">
-                    <strong>★ 終極技：${f.ultName}</strong><br>
-                    <span style="color:#e2e8f0;">${f.ultDesc}</span>
-                </div>
+                <div style="font-size: 32px;">${isOwned ? data.icon : '?'}</div>
+                <div style="font-weight: bold; color: ${isOwned ? data.color : '#fff'};">${isOwned ? data.name : '未知派系'}</div>
+                <div style="font-size: 12px; color: var(--text-secondary); margin-top: 5px;">${isOwned ? data.baseDesc : '尚待解鎖'}</div>
             `;
             facList.appendChild(card);
         });
     }
-
-    // 4. 渲染融合天賦圖鑑
-    const fusList = document.getElementById('ency-fusions');
-    if (fusList) {
-        fusList.innerHTML = '';
-        const fusions = {
-            gatling: { name: '加特林機槍', reqs: ['狂怒', '迅捷'], color: 'linear-gradient(135deg, #ef4444, #22c55e)', icon: '🔫', desc: '狂怒+迅捷最高星防禦塔機率發射三連發範圍子彈' },
-            shatter: { name: '碎冰擊', reqs: ['狂怒', '冰霜'], color: 'linear-gradient(135deg, #ef4444, #3b82f6)', icon: '🔨', desc: '狂怒+冰霜對凍結目標傷害 +30%，且 5% 機率秒殺非 Boss' },
-            midas:   { name: '點石成金', reqs: ['貪婪', '命運'], color: 'linear-gradient(135deg, #eab308, #a78bfa)', icon: '✨', desc: '貪婪+命運場上每隻最高星塔每波+2元，且塔 5% 機率升級不花錢' },
-            bounty:  { name: '賞金', reqs: ['迅捷', '貪婪'], color: 'linear-gradient(135deg, #22c55e, #eab308)', icon: '🎯', desc: '【迅捷+貪婪】每秒增加50賞金目標，擊殺得5倍' },
-            plunder: { name: '掠奪', reqs: ['狂怒', '貪婪'], color: 'linear-gradient(135deg, #ef4444, #eab308)', icon: '💰', desc: '【狂怒+貪婪】攻擊有10%機率偷取2金幣' },
-            execution: { name: '處決', reqs: ['狂怒', '命運'], color: 'linear-gradient(135deg, #ef4444, #a78bfa)', icon: '💀', desc: '【狂怒+命運】對血量低於25%的敵人造成300%額外傷害' },
-            blizzard: { name: '暴風雪', reqs: ['迅捷', '冰霜'], color: 'linear-gradient(135deg, #22c55e, #3b82f6)', icon: '🌪️', desc: '【迅捷+冰霜】冰凍狀態的敵人受傷加深50%' },
-            timewarp: { name: '時空扭曲', reqs: ['迅捷', '命運'], color: 'linear-gradient(135deg, #22c55e, #a78bfa)', icon: '⏳', desc: '【迅捷+命運】攻擊後15%機率立刻重置冷卻' },
-            frostvault: { name: '冰霜寶庫', reqs: ['冰霜', '貪婪'], color: 'linear-gradient(135deg, #3b82f6, #eab308)', icon: '💎', desc: '【冰霜+貪婪】擊殺冰凍狀態的敵人額外掉落5金幣' },
-            absolutezero: { name: '絕對零度', reqs: ['冰霜', '命運'], color: 'linear-gradient(135deg, #3b82f6, #a78bfa)', icon: '❄️', desc: '【冰霜+命運】每15秒凍結全場敵人3秒' }
-        };
-        
-        Object.keys(fusions).forEach(key => {
-            const f = fusions[key];
-            const card = document.createElement('div');
-            card.style.background = 'rgba(255,255,255,0.05)';
-            card.style.padding = '15px';
-            card.style.borderRadius = '10px';
-            card.innerHTML = `
-                <div style="font-weight: bold; background: ${f.color}; -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-size: 16px; margin-bottom: 5px;">
-                    ${f.icon} ${f.name}
-                </div>
-                <div style="font-size: 11px; display: inline-block; background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px; margin-bottom: 8px;">
-                    條件：${f.reqs[0]} Lv.5 + ${f.reqs[1]} Lv.5
-                </div>
-                <div style="font-size: 12px; color: var(--text-secondary);">${f.desc}</div>
-            `;
-            fusList.appendChild(card);
-        });
-    }
 }
 
-// 當網頁載入時啟動
 window.onload = () => {
     initGame();
     

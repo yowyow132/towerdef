@@ -969,3 +969,55 @@ body {
     border-top: 1px dashed rgba(255,255,255,0.05);
 }
 
+
+
+#commander-skills {
+    position: absolute;
+    bottom: 15px;
+    right: 15px;
+    display: flex;
+    gap: 10px;
+    z-index: 10;
+}
+.skill-btn {
+    width: 60px;
+    height: 60px;
+    background: rgba(15, 15, 25, 0.8);
+    border: 2px solid #312e81;
+    border-radius: 8px;
+    color: #e0e7ff;
+    font-family: 'Outfit', sans-serif;
+    font-size: 12px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.5);
+}
+.skill-btn:hover {
+    background: rgba(49, 46, 129, 0.8);
+    border-color: #818cf8;
+    transform: translateY(-2px);
+}
+.skill-btn:active {
+    transform: translateY(0);
+}
+.skill-btn.on-cd {
+    filter: grayscale(100%) brightness(0.5);
+    cursor: not-allowed;
+}
+.skill-btn .cd {
+    color: #34d399;
+    font-size: 10px;
+    margin-top: 2px;
+}
+.skill-btn.on-cd .cd {
+    color: #ef4444;
+}
+
+
+.glow-btn:disabled { color: var(--text-muted) !important; }
+

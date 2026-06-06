@@ -87,6 +87,8 @@
         <main id="game-body">
             <div id="canvas-wrapper">
                 <canvas id="game-canvas" width="800" height="480"></canvas>
+                <div id="commander-skills">
+                </div>
                 <div id="game-overlay" class="hidden">
                     <div id="overlay-content">
                         <h2 id="overlay-title">遊戲結束</h2>
@@ -182,8 +184,12 @@
                 <button class="action-btn glow-btn" id="btn-draw-gacha" onclick="drawGacha()" style="width: 200px; margin: 0 auto;">🎰 點擊抽卡</button>
             </div>
             <div class="shop-direct-buy">
-                <h3 style="margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px;">解鎖防禦塔</h3>
-                <div id="shop-list" class="item-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 15px;">
+                <h3 style="margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px;">防禦塔直購</h3>
+                <div id="shop-list" class="item-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 15px; margin-bottom: 30px;">
+                    <!-- JS 生成 -->
+                </div>
+                <h3 style="margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px;">指揮官技能直購</h3>
+                <div id="shop-skills-list" class="item-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 15px;">
                     <!-- JS 生成 -->
                 </div>
             </div>

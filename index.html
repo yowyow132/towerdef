@@ -22,6 +22,7 @@
                     <button class="action-btn glow-btn" onclick="switchView('level-select-view'); renderLevelSelect('campaign');" style="padding: 15px; font-size: 18px; flex: 1;">🗺️ 闖關模式</button>
                     <button class="action-btn glow-btn" onclick="switchView('level-select-view'); renderLevelSelect('endless');" style="padding: 15px; font-size: 18px; flex: 1; border-color: rgba(239, 68, 68, 0.5); color: #fca5a5; box-shadow: 0 0 10px rgba(239, 68, 68, 0.3);">♾️ 無盡模式</button>
                 </div>
+                <button class="action-btn glow-btn" onclick="switchView('prestige-view'); renderPrestige();" style="padding: 15px; font-size: 18px; border-color: rgba(217, 70, 239, 0.5); color: #d946ef; box-shadow: 0 0 10px rgba(217, 70, 239, 0.3);">✨ 轉生與神話科技</button>
                 <button class="action-btn" onclick="switchView('shop-view'); renderShop();" style="padding: 15px; font-size: 18px; border-color: rgba(255,255,255,0.2);">🛒 商店與抽卡</button>
                 <button class="action-btn" onclick="switchView('backpack-view'); renderBackpack();" style="padding: 15px; font-size: 18px; border-color: rgba(255,255,255,0.2);">🎒 背包與升級</button>
                 <button class="action-btn glow-btn" onclick="switchView('tech-view'); renderTechTree();" style="padding: 15px; font-size: 18px; border-color: rgba(234,179,8,0.5); color: #fde047; box-shadow: 0 0 10px rgba(234,179,8,0.3);">🧬 玩家天賦</button>
@@ -144,6 +145,14 @@
                         <span class="btn-title">一鍵上場</span>
                         <span class="btn-cost">⚡ AUTO</span>
                     </button>
+                    <button class="action-btn" id="btn-barricade" style="display: none; background: rgba(34, 197, 94, 0.2); border-color: #22c55e; color: #86efac;">
+                        <span class="btn-title">設置路障</span>
+                        <span class="btn-cost">🪙 500</span>
+                    </button>
+                    <button class="action-btn" id="btn-trap" style="background: rgba(249, 115, 22, 0.2); border-color: #f97316; color: #fdba74;">
+                        <span class="btn-title">放置陷阱</span>
+                        <span class="btn-cost">🪙 300</span>
+                    </button>
                 </div>
             </div>
         </footer>
@@ -180,6 +189,7 @@
             <div class="gacha-section" style="background: rgba(255,255,255,0.05); padding: 20px; border-radius: 12px; text-align: center; margin-bottom: 30px; border: 1px solid rgba(167, 139, 250, 0.3);">
                 <h3 style="color: #c084fc; margin-bottom: 10px;">轉盤抽卡 (500 🪙)</h3>
                 <p style="color: var(--text-secondary); font-size: 14px; margin-bottom: 20px;">機率：普通(N) 50% | 稀有(R) 30% | 史詩(SR) 15% | 傳說(UR) 5%</p>
+                <div id="pity-counter-display" style="color: #fde047; font-size: 16px; margin-bottom: 15px; font-weight: bold;">幸運值：0 / 20</div>
                 <div id="gacha-result" class="gacha-result" style="height: 100px; display: flex; align-items: center; justify-content: center; font-size: 24px; margin-bottom: 20px; font-weight: bold;"></div>
                 <button class="action-btn glow-btn" id="btn-draw-gacha" onclick="drawGacha()" style="width: 200px; margin: 0 auto;">🎰 點擊抽卡</button>
             </div>
@@ -225,6 +235,9 @@
               <h3 style="margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px; color: #a78bfa;">防禦塔庫存</h3>
               <div id="backpack-grid" class="item-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; margin-bottom: 30px;">
               </div>
+              <h3 style="margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px; color: #10b981;">裝備背包 (點擊自動裝備)</h3>
+              <div id="backpack-equip-grid" class="item-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; margin-bottom: 30px;">
+              </div>
               <h3 style="margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px; color: #fbbf24;">通關遺物</h3>
               <div id="backpack-relics-grid" class="item-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; margin-bottom: 30px;">
                   <!-- Relics will be populated here -->
@@ -233,6 +246,26 @@
               <div id="backpack-factions-grid" class="item-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px;">
               </div>
           </div>
+    </div>
+
+    <!-- 轉生視圖 -->
+    <div id="prestige-view" class="view-screen hidden" style="overflow-y: auto;">
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 20px 50px;">
+            <h1 style="color: #d946ef; font-size: 32px; text-shadow: 0 0 15px rgba(217, 70, 239, 0.5);">✨ 轉生與神話科技</h1>
+            <div style="font-size: 24px; color: #facc15; font-weight: bold;">💎 <span id="time-gems-display">0</span></div>
+        </div>
+        
+        <div style="text-align: center; margin: 20px;">
+            <p style="color: #cbd5e1; margin-bottom: 20px;">轉生將重置您的金幣、防禦塔、派系解鎖與全域升級，但會根據當前關卡與波數獲得【時空寶石】。</p>
+            <button class="action-btn glow-btn" onclick="doPrestige()" style="padding: 15px 30px; font-size: 20px; background: rgba(217, 70, 239, 0.2); border-color: #d946ef; color: #fdf4ff;">✨ 立即轉生 (預計獲得: <span id="prestige-preview">0</span> 💎)</button>
+        </div>
+
+        <h2 style="color: #a5b4fc; margin-left: 50px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px;">神話科技樹</h2>
+        <div id="mythic-tech-list" style="display: flex; flex-direction: column; gap: 20px; padding: 0 50px; margin-top: 20px; max-width: 800px; margin-left: auto; margin-right: auto;">
+            <!-- Dynamically populated -->
+        </div>
+        
+        <button class="action-btn" onclick="switchView('home-view')" style="margin: 50px auto; display: block; width: 200px; border-color: rgba(255,255,255,0.2);">返回主選單</button>
     </div>
 
     <!-- 圖鑑視圖 -->
@@ -254,15 +287,23 @@
             <div id="ency-factions" class="ency-list" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px; margin-bottom: 30px;">
             </div>
 
-            <h3 style="margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px; color: #f472b6;">融合天賦</h3>
+            <h3 style="margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px; color: #f472b6;">超級融合塔</h3>
+            <div id="ency-supertowers" class="ency-list" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px; margin-bottom: 30px;">
+            </div>
+
+            <h3 style="margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px; color: #10b981;">派系融合天賦</h3>
             <div id="ency-fusions" class="ency-list" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px; margin-bottom: 30px;">
+            </div>
+
+            <h3 style="margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px; color: #facc15;">裝備圖鑑</h3>
+            <div id="ency-equipment" class="ency-list" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px; margin-bottom: 30px;">
             </div></div>
     </div>
 
     </div> <!-- End of app-container -->
 
     <!-- 遊戲邏輯腳本 -->
-    <script src="game.js"></script>
+    <script src="game.js?v=2.1"></script>
     <audio id="bg-music" src="Strategy_in_the_Sun.mp3" loop></audio>
 
       <!-- 設定選單 -->

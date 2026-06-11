@@ -172,10 +172,67 @@ const LEVEL_CONFIG = {
             portal: 'rgba(5, 10, 20, 0.9)',
             portalGlow: '#38bdf8'
         }
+    },
+    4: {
+        name: "第四關：時空裂縫",
+        desc: "存在傳送門，敵人會瞬間跳躍！",
+        bossWave: 50,
+        clearReward: 15000,
+        difficulty: 1.8,
+        path: [
+            { x: 30, y: 100 },
+            { x: 300, y: 100, teleportTo: { x: 300, y: 350 } },
+            { x: 600, y: 350 },
+            { x: 600, y: 150 },
+            { x: 770, y: 150 }
+        ],
+        theme: {
+            bg: '#1a0b2e',
+            trackOuter: 'rgba(217, 70, 239, 0.15)',
+            trackInner: 'rgba(217, 70, 239, 0.4)',
+            trackLine: '#4a044e',
+            portal: 'rgba(20, 5, 30, 0.9)',
+            portalGlow: '#d946ef'
+        }
+    },
+    5: {
+        name: "第五關：無限迷宮",
+        desc: "存在分歧路口。花費 500 金幣設置路障，迫使敵人走長路！",
+        bossWave: 60,
+        clearReward: 20000,
+        difficulty: 2.0,
+        path: [
+            { x: 30, y: 240 },
+            { x: 200, y: 240 },
+            { x: 600, y: 240 },
+            { x: 770, y: 240 }
+        ],
+        pathLong: [
+            { x: 30, y: 240 },
+            { x: 200, y: 240 },
+            { x: 200, y: 80 },
+            { x: 600, y: 80 },
+            { x: 600, y: 400 },
+            { x: 770, y: 400 }
+        ],
+        theme: {
+            bg: '#022c22',
+            trackOuter: 'rgba(34, 197, 94, 0.15)',
+            trackInner: 'rgba(34, 197, 94, 0.4)',
+            trackLine: '#064e3b',
+            portal: 'rgba(5, 20, 10, 0.9)',
+            portalGlow: '#22c55e'
+        }
     }
 };
 
 let PATH_POINTS = LEVEL_CONFIG[1].path;
+
+const EQUIPMENT_DATA = {
+    flame_bow: { name: 'Flame Bow', icon: '🔥', desc: 'Attacks apply burn' },
+    frost_staff: { name: 'Frost Staff', icon: '❄️', desc: 'Attacks slow target' },
+    berserker_ring: { name: 'Berserker Ring', icon: '💍', desc: '+50% AS but -20% range' }
+};
 
 
 // ==========================================
@@ -235,7 +292,12 @@ let playerProfile = {
     globalUpgrades: {
         archer: 1, magic: 1, cannon: 1,
         sniper: 1, poison: 1, tesla: 1, frost: 1, blackhole: 1
-    }
+    },
+    pityCounter: 0,
+    lastSaveTime: Date.now(),
+    timeGems: 0,
+    mythicUpgrades: { chainLightning: 0, attackSpeedAwaken: 0 },
+    inventory: []
 };
 
 function formatMoney(amount) {
@@ -245,6 +307,7 @@ function formatMoney(amount) {
 }
 
 function saveProfile() {
+    playerProfile.lastSaveTime = Date.now();
     localStorage.setItem('mergeTDProfile', JSON.stringify(playerProfile));
 }
 
@@ -262,6 +325,27 @@ function loadProfile() {
         playerProfile.ownedFactions = parsed.ownedFactions || ['fury', 'swift', 'frost', 'greed', 'fate'];
         playerProfile.ownedRelics = parsed.ownedRelics || [];
         playerProfile.playerUpgrades = parsed.playerUpgrades || { startGold: 1, startLives: 1, rerolls: 1, discount: 1 };
+        
+        playerProfile.pityCounter = parsed.pityCounter || 0;
+        playerProfile.lastSaveTime = parsed.lastSaveTime || Date.now();
+        playerProfile.timeGems = parsed.timeGems || 0;
+        playerProfile.mythicUpgrades = parsed.mythicUpgrades || { chainLightning: 0, attackSpeedAwaken: 0 };
+        
+        let now = Date.now();
+        let diffMs = now - playerProfile.lastSaveTime;
+        let diffMinutes = Math.floor(diffMs / 60000);
+        
+        if (diffMinutes > 1440) diffMinutes = 1440; // cap at 24 hours
+        
+        if (diffMinutes > 0) {
+            let offlineGold = diffMinutes * 10;
+            playerProfile.gameCoins += offlineGold;
+            setTimeout(() => {
+                alert(`歡迎回來！你離線了 ${diffMinutes} 分鐘，獲得了 ${offlineGold} 宇宙幣的掛機獎勵！`);
+                let coinsDisplay = document.getElementById('home-coins');
+                if(coinsDisplay) coinsDisplay.innerText = formatMoney(playerProfile.gameCoins);
+            }, 500);
+        }
     }
 }
 loadProfile();
@@ -292,6 +376,18 @@ function initBattle(levelId = 1) {
     gameState.level = levelId;
     PATH_POINTS = LEVEL_CONFIG[levelId].path;
     document.getElementById('canvas-wrapper').style.background = LEVEL_CONFIG[levelId].theme.bg;
+
+    let btnBarricade = document.getElementById('btn-barricade');
+    if (btnBarricade) {
+        if (levelId === 5) {
+            btnBarricade.style.display = 'inline-block';
+            btnBarricade.innerHTML = '<span class=' + chr(34) + 'btn-title' + chr(34) + '>設置路障</span><span class=' + chr(34) + 'btn-cost' + chr(34) + '>🪙 500</span>';
+            btnBarricade.disabled = false;
+            btnBarricade.style.opacity = '1';
+        } else {
+            btnBarricade.style.display = 'none';
+        }
+    }
     
     if(typeof initSkillUI !== 'undefined') initSkillUI();
     if(typeof COMMANDER_SKILLS !== 'undefined') {
@@ -325,11 +421,74 @@ for (let i = 0; i < 4; i++) {
 let enemies = [];
 let projectiles = [];
 let particles = [];
+let projectilePool = [];
+let particlePool = [];
+
+function getProjectile(startX, startY, target, type, damage, speed, config = null) {
+    if (projectilePool.length > 0) {
+        let p = projectilePool.pop();
+        p.x = startX;
+        p.y = startY;
+        p.target = target;
+        p.type = type;
+        p.damageVal = damage;
+        p.speed = speed;
+        p.config = config;
+        p.isCrit = config && config.isCrit ? config.isCrit : false;
+        p.angleOffset = config && config.angleOffset !== undefined ? config.angleOffset : null;
+        p.bounced = false;
+        if (p.angleOffset !== null) {
+            let dx = target.x - startX;
+            let dy = target.y - startY;
+            let baseAngle = Math.atan2(dy, dx);
+            let finalAngle = baseAngle + p.angleOffset;
+            p.vx = Math.cos(finalAngle) * speed;
+            p.vy = Math.sin(finalAngle) * speed;
+        }
+        return p;
+    }
+    return new Projectile(startX, startY, target, type, damage, speed, config);
+}
+
+function getParticle(config) {
+    if (particlePool.length > 0) {
+        let p = particlePool.pop();
+        for (let k in p) delete p[k];
+        Object.assign(p, config);
+        return p;
+    }
+    return config;
+}
+
 let damageTexts = [];
+let traps = [];
+let placementMode = null;
+let terrainNodes = [];
 
 // Canvas 與 DOM 參考
 let canvas, ctx;
 let dragInfo = null; // 儲存拖拽狀態
+let currentMouseX = -100;
+let currentMouseY = -100;
+let shakeMagnitude = 0;
+let shakeTimer = 0;
+
+function getSuperFusionType(typeA, typeB, levelA, levelB) {
+    if (levelA === levelB) {
+        if ((typeA === 'archer' && typeB === 'magic') || (typeA === 'magic' && typeB === 'archer')) {
+            return 'arcane_ranger';
+        }
+    }
+    return null;
+}
+
+let bgStars = Array.from({length: 50}).map(() => ({
+    x: Math.random() * CANVAS_WIDTH,
+    y: Math.random() * CANVAS_HEIGHT,
+    speed: 0.2 + Math.random() * 0.8,
+    radius: Math.random() * 1.5,
+    alpha: 0.1 + Math.random() * 0.5
+}));
 
 // ==========================================
 // 3. 類別定義 (Tower, Enemy, Projectile, Particle)
@@ -342,13 +501,15 @@ class Tower {
         this.lastShot = 0; // 上次射擊時間
         this.angle = 0;
         this.id = Math.random().toString(36).substr(2, 9);
+        this.equipment = null;
         
         this.consecutiveHits = 0;
         this.lastTargetId = null;
     }
 
     get ATK() {
-        const base = { archer: 16, magic: 26, cannon: 40, sniper: 300, poison: 12, tesla: 35, frost: 20, blackhole: 90 }[this.type];
+        const base = { archer: 16, magic: 26, cannon: 40, sniper: 300, poison: 12, tesla: 35, frost: 20, blackhole: 90, arcane_ranger: 120,
+                       gatling: 10, druid: 15, flamethrower: 25, aura: 0, railgun: 600, necromancer: 45 }[this.type];
         const levelMult = Math.pow(1.8, this.level - 1);
         const globalMult = 1 + ((playerProfile.globalUpgrades[this.type] || 1) - 1) * 0.2; // 每升一級 +20%
         const furyMult = 1 + rogueState.factions.fury.level * 0.15;
@@ -356,39 +517,87 @@ class Tower {
         if (typeof playerProfile !== 'undefined' && playerProfile.ownedRelics && playerProfile.ownedRelics.includes(1)) {
             relicMult = 1.1; // Relic 1: +10% dmg
         }
-        return Math.round(base * levelMult * globalMult * furyMult * relicMult);
+        let auraMult = this.auraAtkMult || 1;
+        let soulMult = this.type === 'necromancer' ? (1 + (this.soulsGathered || 0) * 0.01) : 1;
+        return Math.round(base * levelMult * globalMult * furyMult * relicMult * auraMult * soulMult);
     }
 
     get AS() {
-        const base = { archer: 1.2, magic: 0.8, cannon: 0.4, sniper: 0.15, poison: 1.5, tesla: 0.6, frost: 0.7, blackhole: 0.2 }[this.type];
+        const base = { archer: 1.2, magic: 0.8, cannon: 0.4, sniper: 0.15, poison: 1.5, tesla: 0.6, frost: 0.7, blackhole: 0.2, arcane_ranger: 2.0,
+                       gatling: 0.5, druid: 1.0, flamethrower: 1.5, aura: 1.0, railgun: 0.1, necromancer: 0.8 }[this.type];
         const levelMult = Math.pow(1.3, this.level - 1);
         const swiftMult = 1 + rogueState.factions.swift.level * 0.20;
         let comboMult = 1;
         if (rogueState.factions.swift.level === 5 && this.consecutiveHits > 0) {
             comboMult += this.consecutiveHits * 0.10;
         }
-        return base * levelMult * swiftMult * comboMult; // 射擊頻率（次/秒）
+        if (this.type === 'gatling' && this.consecutiveHits > 0) {
+            comboMult += Math.min(4.0, this.consecutiveHits * 0.2); // max 4.0 after 20 hits
+        }
+        let mythicMult = 1;
+        if (playerProfile.mythicUpgrades && playerProfile.mythicUpgrades.attackSpeedAwaken > 0) {
+            mythicMult = 3;
+        }
+        let auraMult = this.auraAsMult || 1;
+        let equipMult = this.equipment === 'berserker_ring' ? 1.5 : 1;
+        let synergyMult = this.synergy === 'ranger_camp' ? 2.0 : 1;
+        let terrainMult = 1;
+        if (typeof terrainNodes !== 'undefined') {
+            for (let node of terrainNodes) {
+                if (node.type === 'mana' && Math.abs(this.x - node.x) < 5 && Math.abs(this.y - node.y) < 5) {
+                    terrainMult = 1.3;
+                    break;
+                }
+            }
+        }
+        return base * levelMult * swiftMult * comboMult * mythicMult * auraMult * equipMult * terrainMult * synergyMult; // 射擊頻率（次/秒）
     }
 
     get range() {
-        const base = { archer: 3.5, magic: 3.0, cannon: 4.5, sniper: 8.0, poison: 3.0, tesla: 3.5, frost: 4.0, blackhole: 5.0 }[this.type];
-        return base * 75; // 轉為像素距離
+        const base = { archer: 3.5, magic: 3.0, cannon: 4.5, sniper: 8.0, poison: 3.0, tesla: 3.5, frost: 4.0, blackhole: 5.0, arcane_ranger: 4.5,
+                       gatling: 3.0, druid: 3.5, flamethrower: 2.5, aura: 0, railgun: 10.0, necromancer: 4.0 }[this.type];
+        let r = base * 75; // 轉為像素距離
+        if (this.equipment === 'berserker_ring') r *= 0.8;
+        if (this.synergy === 'ranger_camp') r *= 1.5;
+        if (typeof terrainNodes !== 'undefined') {
+            for (let node of terrainNodes) {
+                if (node.type === 'high_ground' && Math.abs(this.x - node.x) < 5 && Math.abs(this.y - node.y) < 5) {
+                    r *= 1.2;
+                    break;
+                }
+            }
+        }
+        return r;
     }
 
     get color() {
         return {
             archer: '#10b981', // 綠色
             magic: '#3b82f6',  // 藍色
-            cannon: '#fb923c'  // 橘色
-        }[this.type];
+            cannon: '#fb923c', // 橘色
+            arcane_ranger: '#8b5cf6', // 紫色
+            gatling: '#94a3b8',
+            druid: '#4ade80',
+            flamethrower: '#ef4444',
+            aura: '#fde047',
+            railgun: '#0ea5e9',
+            necromancer: '#a855f7'
+        }[this.type] || '#fff';
     }
 
     get name() {
         return {
             archer: '弓箭塔',
             magic: '魔法塔',
-            cannon: '砲台'
-        }[this.type];
+            cannon: '砲台',
+            arcane_ranger: '秘法遊俠',
+            gatling: '加特林',
+            druid: '德魯伊',
+            flamethrower: '火焰放射器',
+            aura: '光環塔',
+            railgun: '軌道砲',
+            necromancer: '死靈法師'
+        }[this.type] || '防禦塔';
     }
 
     // 計算出售價格
@@ -420,6 +629,8 @@ class Tower {
     update(x, y, timeStep) {
         this.x = x;
         this.y = y;
+        
+        if (this.type === 'aura') return;
 
         let target = this.findTarget();
         if (target) {
@@ -429,10 +640,10 @@ class Tower {
             // 攻擊冷卻判定（受遊戲速度影響，加速時攻擊間隔縮短）
             let cooldown = 1000 / (this.AS * gameState.speed);
             if (Date.now() - this.lastShot >= cooldown) {
-                // 迅捷連擊攻速加成判定
-                if (rogueState.factions.swift.level === 5) {
+                // 迅捷連擊攻速加成判定 或 加特林疊加
+                if (rogueState.factions.swift.level === 5 || this.type === 'gatling') {
                     if (target.id === this.lastTargetId) {
-                        this.consecutiveHits = Math.min(15, this.consecutiveHits + 1);
+                        this.consecutiveHits = Math.min(20, this.consecutiveHits + 1);
                     } else {
                         this.consecutiveHits = 0;
                         this.lastTargetId = target.id;
@@ -477,13 +688,37 @@ class Tower {
             }
         }
 
+        // 神話連鎖閃電判定
+        if (playerProfile.mythicUpgrades && playerProfile.mythicUpgrades.chainLightning > 0) {
+            if (Math.random() < 0.10) {
+                shakeMagnitude = 5;
+                shakeTimer = 200;
+                let chainDmg = dmg * 5; 
+                target.damage(chainDmg, isCrit ? '#ef4444' : '#facc15', isCrit);
+                createLaserEffect(this.x, this.y, target.x, target.y, '#facc15', 3);
+                damageTexts.push({ text: '⚡神話閃電', x: target.x, y: target.y - 40, color: '#facc15' });
+                
+                let prevTarget = target;
+                let bounces = 5;
+                for (let i = 0; i < bounces; i++) {
+                    let nextTarget = enemies.find(e => e.hp > 0 && e !== prevTarget && Math.hypot(e.x - prevTarget.x, e.y - prevTarget.y) < 250);
+                    if (nextTarget) {
+                        chainDmg *= 0.8;
+                        nextTarget.damage(chainDmg, isCrit ? '#ef4444' : '#facc15', isCrit);
+                        createLaserEffect(prevTarget.x, prevTarget.y, nextTarget.x, nextTarget.y, '#facc15', 2);
+                        prevTarget = nextTarget;
+                    } else break;
+                }
+            }
+        }
+
         if (this.type === 'archer') {
             if (rogueState.fusions.gatling.active) {
-                projectiles.push(new Projectile(this.x, this.y, target, 'arrow', dmg, 7, { angleOffset: 0, isCrit: isCrit }));
-                projectiles.push(new Projectile(this.x, this.y, target, 'arrow', dmg, 7, { angleOffset: -0.25, isCrit: isCrit }));
-                projectiles.push(new Projectile(this.x, this.y, target, 'arrow', dmg, 7, { angleOffset: 0.25, isCrit: isCrit }));
+                projectiles.push(getProjectile(this.x, this.y, target, 'arrow', dmg, 7, { angleOffset: 0, isCrit: isCrit }));
+                projectiles.push(getProjectile(this.x, this.y, target, 'arrow', dmg, 7, { angleOffset: -0.25, isCrit: isCrit }));
+                projectiles.push(getProjectile(this.x, this.y, target, 'arrow', dmg, 7, { angleOffset: 0.25, isCrit: isCrit }));
             } else {
-                projectiles.push(new Projectile(this.x, this.y, target, 'arrow', dmg, 7, { isCrit: isCrit }));
+                projectiles.push(getProjectile(this.x, this.y, target, 'arrow', dmg, 7, { isCrit: isCrit }));
             }
         } else if (this.type === 'magic') {
             const shootOneLaser = (t) => {
@@ -491,6 +726,15 @@ class Tower {
                 t.applySlow(0.15 + (this.level * 0.025), 2000);
                 t.damage(finalDmg, isCrit ? '#ef4444' : '#60a5fa', isCrit);
                 createLaserEffect(this.x, this.y, t.x, t.y);
+                
+                if (this.synergy === 'arcane_leyline') {
+                    createExplosion(t.x, t.y, '#06b6d4', 30);
+                    for (let e of enemies) {
+                        if (e !== t && e.hp > 0 && Math.hypot(e.x - t.x, e.y - t.y) <= 30) {
+                            e.damage(finalDmg * 0.5, '#06b6d4', false);
+                        }
+                    }
+                }
             };
 
             shootOneLaser(target);
@@ -514,17 +758,17 @@ class Tower {
             };
 
             if (rogueState.fusions.gatling.active) {
-                projectiles.push(new Projectile(this.x, this.y, target, 'bomb', dmg, 4, { ...config, angleOffset: 0 }));
-                projectiles.push(new Projectile(this.x, this.y, target, 'bomb', dmg, 4, { ...config, angleOffset: -0.25 }));
-                projectiles.push(new Projectile(this.x, this.y, target, 'bomb', dmg, 4, { ...config, angleOffset: 0.25 }));
+                projectiles.push(getProjectile(this.x, this.y, target, 'bomb', dmg, 4, { ...config, angleOffset: 0 }));
+                projectiles.push(getProjectile(this.x, this.y, target, 'bomb', dmg, 4, { ...config, angleOffset: -0.25 }));
+                projectiles.push(getProjectile(this.x, this.y, target, 'bomb', dmg, 4, { ...config, angleOffset: 0.25 }));
             } else {
-                projectiles.push(new Projectile(this.x, this.y, target, 'bomb', dmg, 4, config));
+                projectiles.push(getProjectile(this.x, this.y, target, 'bomb', dmg, 4, config));
             }
         } else if (this.type === 'sniper') {
             target.damage(dmg, isCrit ? '#ef4444' : '#d946ef', isCrit);
             createLaserEffect(this.x, this.y, target.x, target.y, '#d946ef', 4);
         } else if (this.type === 'poison') {
-            projectiles.push(new Projectile(this.x, this.y, target, 'poison_bolt', dmg, 6, { isCrit: isCrit, duration: 3000 }));
+            projectiles.push(getProjectile(this.x, this.y, target, 'poison_bolt', dmg, 6, { isCrit: isCrit, duration: 3000 }));
         } else if (this.type === 'tesla') {
             let chainDmg = dmg;
             target.damage(chainDmg, isCrit ? '#ef4444' : '#facc15', isCrit);
@@ -541,9 +785,70 @@ class Tower {
                 } else break;
             }
         } else if (this.type === 'frost') {
-            projectiles.push(new Projectile(this.x, this.y, target, 'frost_orb', dmg, 5, { isCrit: isCrit }));
+            projectiles.push(getProjectile(this.x, this.y, target, 'frost_orb', dmg, 5, { isCrit: isCrit }));
         } else if (this.type === 'blackhole') {
-            projectiles.push(new Projectile(this.x, this.y, target, 'blackhole', dmg, 3, { isCrit: isCrit }));
+            projectiles.push(getProjectile(this.x, this.y, target, 'blackhole', dmg, 3, { isCrit: isCrit }));
+        } else if (this.type === 'arcane_ranger') {
+            let targets = [];
+            for (let e of enemies) {
+                if (e.hp > 0 && Math.hypot(e.x - this.x, e.y - this.y) <= this.range) {
+                    targets.push(e);
+                }
+            }
+            targets.sort((a,b) => b.distanceTraveled - a.distanceTraveled);
+            let count = Math.min(3, targets.length);
+            for (let i = 0; i < count; i++) {
+                projectiles.push(getProjectile(this.x, this.y, targets[i], 'arcane_arrow', dmg * 0.6, 6, { isCrit: isCrit }));
+            }
+            if (count === 0) {
+                projectiles.push(getProjectile(this.x, this.y, target, 'arcane_arrow', dmg * 0.6, 6, { isCrit: isCrit }));
+            }
+        } else if (this.type === 'gatling') {
+            projectiles.push(getProjectile(this.x, this.y, target, 'gatling_bullet', dmg, 12, { isCrit: isCrit }));
+        } else if (this.type === 'druid') {
+            projectiles.push(getProjectile(this.x, this.y, target, 'druid_leaf', dmg, 6, { isCrit: isCrit }));
+        } else if (this.type === 'necromancer') {
+            projectiles.push(getProjectile(this.x, this.y, target, 'necro_orb', dmg, 5, { isCrit: isCrit }));
+        } else if (this.type === 'flamethrower') {
+            let angleToTarget = Math.atan2(target.y - this.y, target.x - this.x);
+            for (let enemy of enemies) {
+                if (enemy.hp <= 0) continue;
+                let dist = Math.hypot(enemy.x - this.x, enemy.y - this.y);
+                if (dist <= this.range) {
+                    let angleToEnemy = Math.atan2(enemy.y - this.y, enemy.x - this.x);
+                    let diff = Math.abs(angleToEnemy - angleToTarget);
+                    if (diff > Math.PI) diff = 2 * Math.PI - diff;
+                    if (diff <= Math.PI / 4) { 
+                        let finalDmg = dmg;
+                        if (enemy.enemyType === 'armored') {
+                            finalDmg *= 2.3; 
+                        }
+                        enemy.damage(finalDmg, isCrit ? '#ef4444' : '#f97316', isCrit);
+                    }
+                }
+            }
+            createLaserEffect(this.x, this.y, target.x, target.y, '#f97316', 8);
+        } else if (this.type === 'railgun') {
+            let dx = target.x - this.x;
+            let dy = target.y - this.y;
+            let dist = Math.hypot(dx, dy);
+            let dirX = dx / dist;
+            let dirY = dy / dist;
+            for (let enemy of enemies) {
+                if (enemy.hp <= 0) continue;
+                let ex = enemy.x - this.x;
+                let ey = enemy.y - this.y;
+                let dot = ex * dirX + ey * dirY;
+                if (dot > 0) { 
+                    let projX = dirX * dot;
+                    let projY = dirY * dot;
+                    let perpDist = Math.hypot(ex - projX, ey - projY);
+                    if (perpDist <= enemy.radius + 20) { 
+                        enemy.damage(dmg, isCrit ? '#ef4444' : '#fb923c', isCrit);
+                    }
+                }
+            }
+            createLaserEffect(this.x, this.y, this.x + dirX * 1500, this.y + dirY * 1500, '#fb923c', 15);
         }
         if (typeof SoundManager !== 'undefined') SoundManager.playShoot(this.type);
         
@@ -561,6 +866,11 @@ class Tower {
             }
         }
 
+        if (this.equipment === 'flame_bow') {
+            target.applyPoison(dmg * 0.3, 3000);
+        } else if (this.equipment === 'frost_staff') {
+            target.applySlow(0.3, 2000);
+        }
     }
 
     draw(ctx, x, y, isHovered = false) {
@@ -686,9 +996,29 @@ class Tower {
             ctx.fill();
             ctx.strokeStyle = '#e879f9';
             ctx.stroke();
+        } else if (this.type === 'arcane_ranger') {
+            ctx.arc(10, 0, 14, -Math.PI / 3, Math.PI / 3);
+            ctx.strokeStyle = '#c084fc';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(8, -8);
+            ctx.lineTo(20, 0);
+            ctx.lineTo(8, 8);
+            ctx.closePath();
+            ctx.fillStyle = 'rgba(192, 132, 252, 0.4)';
+            ctx.fill();
+            ctx.strokeStyle = '#fff';
+            ctx.stroke();
         }
 
         ctx.restore();
+
+        if (this.equipment && EQUIPMENT_DATA[this.equipment]) {
+            ctx.font = '16px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(EQUIPMENT_DATA[this.equipment].icon, x + GRID_WIDTH / 2 + 20, y + GRID_HEIGHT / 2 - 20);
+        }
 
         // 畫星星等級
         ctx.fillStyle = '#facc15';
@@ -704,17 +1034,13 @@ class Enemy {
         this.id = Math.random().toString(36).substr(2, 9);
         this.isFrozen = false;
         this.frozenTimer = 0;
+        this.isRooted = false;
+        this.rootTimer = 0;
         this.poisonTimer = 0;
         this.poisonDmg = 0;
 
-        // 難度階梯：每 10 波提升一次 HP 指數成長系數
-        
-        const difficultyTier = Math.floor((wave - 1) / 10);
-        const hpGrowthRate = 1.20 + Math.min(0.20, difficultyTier * 0.05); 
         const baseHp = (isBoss ? 1000 : 100) * LEVEL_CONFIG[gameState.level].difficulty;
-        
-        // 無盡模式倍率大幅強化 (曲線陡峭上升)
-        let actualGrowthRate = gameState.level === 3 ? hpGrowthRate * 1.15 : hpGrowthRate;
+        let calculatedHp = Math.round(baseHp * Math.pow(1.5, wave));
         
         this.eliteAffix = null;
         this.shieldHits = 0;
@@ -728,8 +1054,11 @@ class Enemy {
                 this.shieldHits = 10 + Math.floor(wave / 5);
             }
         }
-        const waveHpMultiplier = Math.pow(actualGrowthRate, wave - 1);
-        let calculatedHp = Math.round(baseHp * waveHpMultiplier);
+        
+        this.armor = 0;
+        if (wave >= 20) {
+            this.armor = Math.floor(Math.pow(1.8, wave - 20));
+        }
 
 
         // 決定非 Boss 怪物的類型
@@ -761,7 +1090,8 @@ class Enemy {
             baseSpeed = 0.6;
             this.radius = 20;
             this.color = '#ef4444';
-            calculatedHp *= (1 + difficultyTier * 0.5); // Boss 在後期階梯額外加強
+            let tierNum = Math.floor(wave / 10);
+            calculatedHp *= (1 + tierNum * 0.5); // Boss 在後期階梯額外加強
         } else {
             switch (this.enemyType) {
                 case 'speedy':
@@ -867,6 +1197,11 @@ class Enemy {
             }
         }
 
+        if (this.armor > 0 && !isShatterKill) {
+            amount -= this.armor;
+            if (amount < 1) amount = 1;
+        }
+
         this.hp -= amount;
         this.hitFlash = 3; // 閃爍3幀
 
@@ -942,6 +1277,23 @@ class Enemy {
         // 擊殺特效
         createExplosion(this.x, this.y, this.color, this.isBoss ? 30 : 15);
         gameState.enemiesKilled++;
+
+        for (let t of fieldSlots) {
+            if (t && t.type === 'necromancer') {
+                if (Math.hypot(t.x - this.x, t.y - this.y) <= t.range) {
+                    t.soulsGathered = (t.soulsGathered || 0) + 1;
+                }
+            }
+        }
+
+        if (this.isBoss) {
+            let keys = Object.keys(EQUIPMENT_DATA);
+            let dropKey = keys[Math.floor(Math.random() * keys.length)];
+            if (!playerProfile.inventory) playerProfile.inventory = [];
+            playerProfile.inventory.push(dropKey);
+            saveProfile();
+            damageTexts.push({ text: 'Got Equipment!', x: this.x, y: this.y - 40, color: '#facc15', alpha: 1.0, life: 60, scale: 1.5 });
+        }
     }
 
     update(timeStep) {
@@ -1001,8 +1353,15 @@ class Enemy {
             }
         }
 
+        if (this.isRooted) {
+            this.rootTimer -= (16.6 * gameState.speed);
+            if (this.rootTimer <= 0) {
+                this.isRooted = false;
+            }
+        }
+
         // 實際速度計算
-        let currentSpeed = this.isFrozen ? 0 : this.speed * (1 - this.slowAmount) * gameState.speed;
+        let currentSpeed = (this.isFrozen || this.isRooted) ? 0 : this.speed * (1 - this.slowAmount) * gameState.speed;
 
         // 朝著下一個節點移動
         if (this.pathIndex < PATH_POINTS.length - 1) {
@@ -1016,6 +1375,10 @@ class Enemy {
                 this.x = nextPoint.x;
                 this.y = nextPoint.y;
                 this.pathIndex++;
+                if (nextPoint.teleportTo) {
+                    this.x = nextPoint.teleportTo.x;
+                    this.y = nextPoint.teleportTo.y;
+                }
             } else {
                 // 線性插值移動
                 this.x += (dx / dist) * currentSpeed;
@@ -1283,6 +1646,31 @@ class Projectile {
                     }
                 }
             }
+        } else if (this.type === 'arcane_arrow') {
+            this.target.damage(this.damageVal, this.isCrit ? '#ef4444' : '#c084fc', this.isCrit);
+            createExplosion(this.x, this.y, '#c084fc', 5);
+            if (!this.bounced) {
+                let nextTarget = enemies.find(e => e.hp > 0 && e !== this.target && Math.hypot(e.x - this.x, e.y - this.y) < 150);
+                if (nextTarget) {
+                    let proj = getProjectile(this.x, this.y, nextTarget, 'arcane_arrow', this.damageVal * 0.8, this.speed, { isCrit: this.isCrit });
+                    proj.bounced = true;
+                    projectiles.push(proj);
+                }
+            }
+        } else if (this.type === 'gatling_bullet') {
+            this.target.damage(this.damageVal, this.isCrit ? '#ef4444' : '#cbd5e1', this.isCrit);
+            createExplosion(this.x, this.y, '#cbd5e1', 3);
+        } else if (this.type === 'druid_leaf') {
+            this.target.damage(this.damageVal, this.isCrit ? '#ef4444' : '#4ade80', this.isCrit);
+            createExplosion(this.x, this.y, '#4ade80', 5);
+            if (Math.random() < 0.2) { 
+                this.target.isRooted = true;
+                this.target.rootTimer = 1500;
+                damageTexts.push({ text: '🌿 Root!', x: this.target.x, y: this.target.y - 30, color: '#4ade80', alpha: 1.0, life: 30 });
+            }
+        } else if (this.type === 'necro_orb') {
+            this.target.damage(this.damageVal, this.isCrit ? '#ef4444' : '#a855f7', this.isCrit);
+            createExplosion(this.x, this.y, '#a855f7', 5);
         }
     }
 
@@ -1334,6 +1722,26 @@ class Projectile {
             ctx.setLineDash([2, 2]);
             ctx.stroke();
             ctx.setLineDash([]);
+        } else if (this.type === 'arcane_arrow') {
+            ctx.arc(this.x, this.y, 5, 0, Math.PI * 2);
+            ctx.fillStyle = '#c084fc';
+            ctx.shadowColor = '#c084fc';
+            ctx.shadowBlur = 10;
+            ctx.fill();
+        } else if (this.type === 'gatling_bullet') {
+            ctx.rect(this.x - 2, this.y - 2, 4, 4);
+            ctx.fillStyle = '#cbd5e1';
+            ctx.fill();
+        } else if (this.type === 'druid_leaf') {
+            ctx.arc(this.x, this.y, 4, 0, Math.PI * 2);
+            ctx.fillStyle = '#4ade80';
+            ctx.fill();
+        } else if (this.type === 'necro_orb') {
+            ctx.arc(this.x, this.y, 5, 0, Math.PI * 2);
+            ctx.fillStyle = '#a855f7';
+            ctx.shadowColor = '#a855f7';
+            ctx.shadowBlur = 8;
+            ctx.fill();
         }
         ctx.restore();
     }
@@ -1347,7 +1755,7 @@ function createExplosion(x, y, color, count = 10) {
     for (let i = 0; i < count; i++) {
         let angle = Math.random() * Math.PI * 2;
         let speed = 1 + Math.random() * 4;
-        particles.push({
+        particles.push(getParticle({
             x: x,
             y: y,
             vx: Math.cos(angle) * speed,
@@ -1356,13 +1764,13 @@ function createExplosion(x, y, color, count = 10) {
             color: color,
             alpha: 1.0,
             life: 20 + Math.random() * 20
-        });
+        }));
     }
 }
 
 function createLaserEffect(sx, sy, tx, ty) {
     // 建立射線發光線段粒子
-    particles.push({
+    particles.push(getParticle({
         type: 'laser',
         sx: sx,
         sy: sy,
@@ -1371,12 +1779,12 @@ function createLaserEffect(sx, sy, tx, ty) {
         color: '#60a5fa',
         alpha: 1.0,
         life: 8
-    });
+    }));
 }
 
 function createMergeEffect(x, y) {
     // 圓形擴散衝擊波
-    particles.push({
+    particles.push(getParticle({
         type: 'ring',
         x: x,
         y: y,
@@ -1385,7 +1793,7 @@ function createMergeEffect(x, y) {
         color: '#a78bfa',
         alpha: 1.0,
         life: 15
-    });
+    }));
     // 爆開金色與紫色星屑
     createExplosion(x, y, '#a78bfa', 15);
     createExplosion(x, y, '#facc15', 15);
@@ -1394,7 +1802,7 @@ function createMergeEffect(x, y) {
 // 狂暴 5等終極強化【核爆連鎖】範圍爆炸傷害
 function triggerFuryExplosion(x, y, damage) {
     createExplosion(x, y, '#ef4444', 15);
-    particles.push({
+    particles.push(getParticle({
         type: 'ring',
         x: x,
         y: y,
@@ -1403,7 +1811,7 @@ function triggerFuryExplosion(x, y, damage) {
         color: '#ef4444',
         alpha: 1.0,
         life: 12
-    });
+    }));
     
     for (let enemy of enemies) {
         if (enemy.hp <= 0) continue;
@@ -1846,6 +2254,12 @@ function initDragAndDrop() {
     }
 
     document.addEventListener('pointermove', function (e) {
+        if (canvas) {
+            let canvasRect = canvas.getBoundingClientRect();
+            currentMouseX = e.clientX - canvasRect.left;
+            currentMouseY = e.clientY - canvasRect.top;
+        }
+
         if (!dragInfo) return;
 
         // 更新浮動元素位置
@@ -1933,11 +2347,14 @@ function initDragAndDrop() {
                             });
                         }
                         
-                        // 隨機轉變為另一種更強防禦塔種類
-                        const types = ['archer', 'magic', 'cannon'];
-                        const randType = types[Math.floor(Math.random() * types.length)];
+                        // 隨機轉變為另一種更強防禦塔種類 (僅限基礎塔)
+                        let newType = destTower.type;
+                        if (['archer', 'magic', 'cannon'].includes(destTower.type)) {
+                            const types = ['archer', 'magic', 'cannon'];
+                            newType = types[Math.floor(Math.random() * types.length)];
+                        }
                         
-                        fieldSlots[fieldIndex] = new Tower(randType, nextLevel);
+                        fieldSlots[fieldIndex] = new Tower(newType, nextLevel);
                         
                         // 製造合併波特效 (在該格中心座標)
                         let col = fieldIndex % 4;
@@ -1946,6 +2363,17 @@ function initDragAndDrop() {
                         let cy = GRID_START.y + row * (GRID_HEIGHT + GRID_SPACING) + GRID_HEIGHT / 2;
                         createMergeEffect(cx, cy);
 
+                        targetPlaced = true;
+                    } else if (getSuperFusionType(destTower.type, dragInfo.tower.type, destTower.level, dragInfo.tower.level)) {
+                        let superType = getSuperFusionType(destTower.type, dragInfo.tower.type, destTower.level, dragInfo.tower.level);
+                        fieldSlots[fieldIndex] = new Tower(superType, destTower.level);
+                        
+                        let col = fieldIndex % 4;
+                        let row = Math.floor(fieldIndex / 4);
+                        let cx = GRID_START.x + col * (GRID_WIDTH + GRID_SPACING) + GRID_WIDTH / 2;
+                        let cy = GRID_START.y + row * (GRID_HEIGHT + GRID_SPACING) + GRID_HEIGHT / 2;
+                        createMergeEffect(cx, cy);
+                        damageTexts.push({ text: '⭐ 超級融合 ⭐', x: cx, y: cy - 30, color: '#facc15', alpha: 1.0, life: 60 });
                         targetPlaced = true;
                     } else {
                         // (3) 不同級或不同職：交換位置
@@ -1994,15 +2422,24 @@ function initDragAndDrop() {
                         });
                     }
 
-                    const types = ['archer', 'magic', 'cannon'];
-                    const randType = types[Math.floor(Math.random() * types.length)];
+                    let newType = destTower.type;
+                    if (['archer', 'magic', 'cannon'].includes(destTower.type)) {
+                        const types = ['archer', 'magic', 'cannon'];
+                        newType = types[Math.floor(Math.random() * types.length)];
+                    }
                     
-                    benchSlots[benchIndex] = new Tower(randType, nextLevel);
+                    benchSlots[benchIndex] = new Tower(newType, nextLevel);
 
                     // 合併特效定位
                     let rect = slot.getBoundingClientRect();
                     createMergeEffect(mouseX, mouseY); // 用滑鼠釋放點展示特效
                     
+                    targetPlaced = true;
+                } else if (getSuperFusionType(destTower.type, dragInfo.tower.type, destTower.level, dragInfo.tower.level)) {
+                    let superType = getSuperFusionType(destTower.type, dragInfo.tower.type, destTower.level, dragInfo.tower.level);
+                    benchSlots[benchIndex] = new Tower(superType, destTower.level);
+                    createMergeEffect(mouseX, mouseY);
+                    damageTexts.push({ text: '⭐ 超級融合 ⭐', x: mouseX, y: mouseY - 30, color: '#facc15', alpha: 1.0, life: 60 });
                     targetPlaced = true;
                 } else {
                     // 交換備戰格
@@ -2173,6 +2610,7 @@ function startWave(force = false) {
 
                 if (spawned < spawnCount) {
             let isBoss = isBossWave && (spawned === spawnCount - 1);
+            if (isBoss) { shakeMagnitude = 10; shakeTimer = 500; }
             enemies.push(new Enemy(waveNum, isBoss));
             spawned++;
         } else {
@@ -2319,6 +2757,14 @@ function drawPath() {
     ctx.beginPath();
     ctx.moveTo(PATH_POINTS[0].x, PATH_POINTS[0].y);
     for (let i = 1; i < PATH_POINTS.length; i++) {
+        if (PATH_POINTS[i-1].teleportTo) {
+            ctx.moveTo(PATH_POINTS[i-1].teleportTo.x, PATH_POINTS[i-1].teleportTo.y);
+            // Draw portals at jump points
+            ctx.arc(PATH_POINTS[i-1].x, PATH_POINTS[i-1].y, 15, 0, Math.PI*2);
+            ctx.moveTo(PATH_POINTS[i-1].teleportTo.x, PATH_POINTS[i-1].teleportTo.y);
+            ctx.arc(PATH_POINTS[i-1].teleportTo.x, PATH_POINTS[i-1].teleportTo.y, 15, 0, Math.PI*2);
+            ctx.moveTo(PATH_POINTS[i-1].teleportTo.x, PATH_POINTS[i-1].teleportTo.y);
+        }
         ctx.lineTo(PATH_POINTS[i].x, PATH_POINTS[i].y);
     }
     ctx.strokeStyle = LEVEL_CONFIG[gameState.level].theme.trackOuter;
@@ -2542,6 +2988,53 @@ window.useSkill = function(skillId) {
     skill.lastUsed = Date.now();
 };
 
+function updateSynergies() {
+    for (let i = 0; i < fieldSlots.length; i++) {
+        if (fieldSlots[i]) {
+            fieldSlots[i].synergy = null;
+        }
+    }
+
+    let visited = new Set();
+    let getAdj = (idx) => {
+        let adj = [];
+        let r = Math.floor(idx / 4);
+        let c = idx % 4;
+        if (r > 0) adj.push(idx - 4);
+        if (r < 2) adj.push(idx + 4);
+        if (c > 0) adj.push(idx - 1);
+        if (c < 3) adj.push(idx + 1);
+        return adj;
+    };
+
+    for (let i = 0; i < fieldSlots.length; i++) {
+        if (!fieldSlots[i] || visited.has(i)) continue;
+        
+        let type = fieldSlots[i].type;
+        let group = [];
+        let q = [i];
+        visited.add(i);
+
+        while (q.length > 0) {
+            let curr = q.shift();
+            group.push(curr);
+
+            for (let nextIdx of getAdj(curr)) {
+                if (!visited.has(nextIdx) && fieldSlots[nextIdx] && fieldSlots[nextIdx].type === type) {
+                    visited.add(nextIdx);
+                    q.push(nextIdx);
+                }
+            }
+        }
+
+        if (type === 'magic' && group.length >= 3) {
+            for (let idx of group) fieldSlots[idx].synergy = 'arcane_leyline';
+        } else if (type === 'archer' && group.length >= 4) {
+            for (let idx of group) fieldSlots[idx].synergy = 'ranger_camp';
+        }
+    }
+}
+
 function updateGame(timeStep) {
     if (typeof midasTimer !== 'undefined' && midasTimer > 0) midasTimer -= timeStep * gameState.speed;
     if (typeof singularityTimer !== 'undefined' && singularityTimer > 0) {
@@ -2565,6 +3058,11 @@ function updateGame(timeStep) {
 
     if(typeof updateSkills !== "undefined") updateSkills(16.6);
     if (gameState.isPaused || gameState.lives <= 0) return;
+    
+    if (shakeTimer > 0) {
+        shakeTimer -= timeStep * gameState.speed;
+    }
+
       if (rogueState.fusions.absolutezero && rogueState.fusions.absolutezero.active) {
           rogueState.absoluteZeroTimer = (rogueState.absoluteZeroTimer || 0) + (16.6 * gameState.speed);
           if (rogueState.absoluteZeroTimer >= 15000) {
@@ -2601,6 +3099,34 @@ function updateGame(timeStep) {
         }
     }
 
+    updateSynergies();
+
+    // 0. Reset and apply Aura buffs
+    for (let i = 0; i < fieldSlots.length; i++) {
+        if (fieldSlots[i]) {
+            fieldSlots[i].auraAtkMult = 1;
+            fieldSlots[i].auraAsMult = 1;
+        }
+    }
+    for (let i = 0; i < fieldSlots.length; i++) {
+        let auraTower = fieldSlots[i];
+        if (auraTower && auraTower.type === 'aura') {
+            let aCol = i % 4;
+            let aRow = Math.floor(i / 4);
+            for (let j = 0; j < fieldSlots.length; j++) {
+                let t = fieldSlots[j];
+                if (t && i !== j) {
+                    let tCol = j % 4;
+                    let tRow = Math.floor(j / 4);
+                    if (Math.abs(aCol - tCol) <= 1 && Math.abs(aRow - tRow) <= 1) {
+                        t.auraAtkMult *= 1.3;
+                        t.auraAsMult *= 1.3;
+                    }
+                }
+            }
+        }
+    }
+
     // 1. 更新上陣防禦塔
     for (let i = 0; i < fieldSlots.length; i++) {
         let tower = fieldSlots[i];
@@ -2611,6 +3137,25 @@ function updateGame(timeStep) {
             let cy = GRID_START.y + row * (GRID_HEIGHT + GRID_SPACING);
             
             tower.update(cx + GRID_WIDTH / 2, cy + GRID_HEIGHT / 2, timeStep);
+        }
+    }
+
+    // Update Traps
+    if (typeof traps !== 'undefined') {
+        for (let i = traps.length - 1; i >= 0; i--) {
+            let trap = traps[i];
+            for (let enemy of enemies) {
+                if (enemy.hp <= 0) continue;
+                if (Math.hypot(enemy.x - trap.x, enemy.y - trap.y) < 15) {
+                    enemy.damage(50, '#f97316', false);
+                    trap.durability--;
+                    if (trap.durability <= 0) {
+                        traps.splice(i, 1);
+                        createExplosion(trap.x, trap.y, '#f97316', 15);
+                    }
+                    break;
+                }
+            }
         }
     }
 
@@ -2627,6 +3172,7 @@ function updateGame(timeStep) {
     for (let i = projectiles.length - 1; i >= 0; i--) {
         let active = projectiles[i].update();
         if (!active) {
+            projectilePool.push(projectiles[i]);
             projectiles.splice(i, 1);
         }
     }
@@ -2640,11 +3186,14 @@ function updateGame(timeStep) {
         } else {
             p.x += p.vx * gameState.speed;
             p.y += p.vy * gameState.speed;
+            p.vx *= Math.pow(0.95, gameState.speed); // 摩擦力
+            p.vy += 0.2 * gameState.speed;           // 重力
             p.alpha -= 0.02 * gameState.speed;
             p.life -= gameState.speed;
         }
 
         if (p.life <= 0 || p.alpha <= 0) {
+            particlePool.push(particles[i]);
             particles.splice(i, 1);
         }
     }
@@ -2652,7 +3201,22 @@ function updateGame(timeStep) {
     // 5. 更新飄字
     for (let i = damageTexts.length - 1; i >= 0; i--) {
         let text = damageTexts[i];
-        text.y -= 0.5 * gameState.speed;
+        if (text.vy === undefined) text.vy = -2.5; // 初始彈出速度
+        text.y += text.vy * gameState.speed;
+        text.vy *= Math.pow(0.85, gameState.speed); // Ease-out 減速
+        
+        for (let j = 0; j < damageTexts.length; j++) {
+            if (i !== j) {
+                let other = damageTexts[j];
+                let dx = text.x - other.x;
+                let dy = text.y - other.y;
+                let dist = Math.hypot(dx, dy);
+                if (dist < 15 && dist >= 0) {
+                    text.x += (dx > 0 ? 0.5 : -0.5) * gameState.speed;
+                }
+            }
+        }
+
         text.alpha -= 0.02 * gameState.speed;
         text.life -= gameState.speed;
         if (text.life <= 0 || text.alpha <= 0) {
@@ -2906,11 +3470,106 @@ function renderGame() {
     // 清除畫布
     ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
+    ctx.save();
+    if (shakeTimer > 0) {
+        let offsetX = (Math.random() - 0.5) * shakeMagnitude * 2;
+        let offsetY = (Math.random() - 0.5) * shakeMagnitude * 2;
+        ctx.translate(offsetX, offsetY);
+    }
+
+    // 繪製動態星空背景
+    ctx.save();
+    for (let star of bgStars) {
+        star.y += star.speed * (gameState.speed || 1);
+        if (star.y > CANVAS_HEIGHT) {
+            star.y = 0;
+            star.x = Math.random() * CANVAS_WIDTH;
+        }
+        ctx.beginPath();
+        ctx.arc(star.x, star.y, star.radius, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255, 255, 255, ${star.alpha})`;
+        ctx.fill();
+    }
+    
+    // 繪製動態格線
+    let offset = (Date.now() / 20) % 40;
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.02)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let x = offset; x < CANVAS_WIDTH; x += 40) {
+        ctx.moveTo(x, 0); ctx.lineTo(x, CANVAS_HEIGHT);
+    }
+    for (let y = offset; y < CANVAS_HEIGHT; y += 40) {
+        ctx.moveTo(0, y); ctx.lineTo(CANVAS_WIDTH, y);
+    }
+    ctx.stroke();
+    ctx.restore();
+
     // 1. 繪製防守路徑
     drawPath();
 
     // 2. 繪製戰場格子
     drawGrid();
+
+    // 繪製羈絆連線
+    ctx.save();
+    ctx.lineWidth = 4;
+    for (let i = 0; i < fieldSlots.length; i++) {
+        let t1 = fieldSlots[i];
+        if (!t1 || !t1.synergy) continue;
+
+        let r1 = Math.floor(i / 4);
+        let c1 = i % 4;
+        let cx1 = GRID_START.x + c1 * (GRID_WIDTH + GRID_SPACING) + GRID_WIDTH / 2;
+        let cy1 = GRID_START.y + r1 * (GRID_HEIGHT + GRID_SPACING) + GRID_HEIGHT / 2;
+
+        let adj = [];
+        if (r1 < 2) adj.push(i + 4);
+        if (c1 < 3) adj.push(i + 1);
+
+        for (let j of adj) {
+            let t2 = fieldSlots[j];
+            if (t2 && t2.synergy === t1.synergy) {
+                let r2 = Math.floor(j / 4);
+                let c2 = j % 4;
+                let cx2 = GRID_START.x + c2 * (GRID_WIDTH + GRID_SPACING) + GRID_WIDTH / 2;
+                let cy2 = GRID_START.y + r2 * (GRID_HEIGHT + GRID_SPACING) + GRID_HEIGHT / 2;
+                
+                if (t1.synergy === 'arcane_leyline') {
+                    ctx.strokeStyle = '#06b6d4';
+                    ctx.shadowColor = '#06b6d4';
+                } else if (t1.synergy === 'ranger_camp') {
+                    ctx.strokeStyle = '#22c55e';
+                    ctx.shadowColor = '#22c55e';
+                }
+                ctx.shadowBlur = 12;
+                ctx.beginPath();
+                ctx.moveTo(cx1, cy1);
+                ctx.lineTo(cx2, cy2);
+                ctx.stroke();
+            }
+        }
+    }
+    ctx.restore();
+
+    // 繪製 terrainNodes
+    ctx.save();
+    if (typeof terrainNodes !== 'undefined') {
+        for(let node of terrainNodes) {
+            ctx.beginPath();
+            ctx.rect(node.x - GRID_WIDTH/2, node.y - GRID_HEIGHT/2, GRID_WIDTH, GRID_HEIGHT);
+            ctx.fillStyle = node.type === 'mana' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(249, 115, 22, 0.3)';
+            ctx.fill();
+            ctx.strokeStyle = node.type === 'mana' ? '#3b82f6' : '#f97316';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.fillStyle = node.type === 'mana' ? '#3b82f6' : '#f97316';
+            ctx.font = 'bold 14px Outfit';
+            ctx.textAlign = 'center';
+            ctx.fillText(node.type === 'mana' ? 'MANA' : 'HIGH', node.x, node.y - GRID_HEIGHT/2 + 20);
+        }
+    }
+    ctx.restore();
 
     // 3. 繪製場上的防禦塔
     for (let i = 0; i < fieldSlots.length; i++) {
@@ -2924,6 +3583,25 @@ function renderGame() {
             // 判斷是否滑鼠懸停在格子上方（這部分可以在滑鼠事件中精確判定，此處簡化）
             tower.draw(ctx, cx, cy, false);
         }
+    }
+
+    // 繪製陷阱
+    if (typeof traps !== 'undefined') {
+        ctx.save();
+        for (let trap of traps) {
+            ctx.beginPath();
+            ctx.arc(trap.x, trap.y, 8, 0, Math.PI * 2);
+            ctx.fillStyle = '#f97316';
+            ctx.fill();
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 12px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(trap.durability, trap.x, trap.y + 4);
+        }
+        ctx.restore();
     }
 
     // 4. 繪製怪物
@@ -2971,6 +3649,54 @@ function renderGame() {
         ctx.restore();
     }
 
+    // 繪製塔範圍 (Hover 或 拖曳時)
+    let hoveredIndex = getGridCellFromCoords(currentMouseX, currentMouseY);
+    let towerToShowRange = null;
+    let rangeX = 0, rangeY = 0;
+
+    if (dragInfo && dragInfo.tower) {
+        towerToShowRange = dragInfo.tower;
+        rangeX = currentMouseX;
+        rangeY = currentMouseY;
+        if (hoveredIndex !== -1) {
+            let col = hoveredIndex % 4;
+            let row = Math.floor(hoveredIndex / 4);
+            rangeX = GRID_START.x + col * (GRID_WIDTH + GRID_SPACING) + GRID_WIDTH / 2;
+            rangeY = GRID_START.y + row * (GRID_HEIGHT + GRID_SPACING) + GRID_HEIGHT / 2;
+        }
+    } else if (hoveredIndex !== -1 && fieldSlots[hoveredIndex]) {
+        towerToShowRange = fieldSlots[hoveredIndex];
+        let col = hoveredIndex % 4;
+        let row = Math.floor(hoveredIndex / 4);
+        rangeX = GRID_START.x + col * (GRID_WIDTH + GRID_SPACING) + GRID_WIDTH / 2;
+        rangeY = GRID_START.y + row * (GRID_HEIGHT + GRID_SPACING) + GRID_HEIGHT / 2;
+    }
+
+    if (towerToShowRange) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(rangeX, rangeY, towerToShowRange.range, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+        ctx.lineWidth = 1;
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    // Boss 警告特效
+    let hasBoss = enemies.some(e => e.isBoss);
+    if (hasBoss) {
+        let pulse = (Math.sin(Date.now() / 150) + 1) / 2;
+        let grad = ctx.createRadialGradient(CANVAS_WIDTH/2, CANVAS_HEIGHT/2, CANVAS_HEIGHT/2 * 0.7, CANVAS_WIDTH/2, CANVAS_HEIGHT/2, CANVAS_WIDTH * 0.6);
+        grad.addColorStop(0, 'rgba(239, 68, 68, 0)');
+        grad.addColorStop(1, `rgba(239, 68, 68, ${pulse * 0.4})`);
+        ctx.save();
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+        ctx.restore();
+    }
+
     // 7. 繪製傷害文字
     ctx.save();
     for (let text of damageTexts) {
@@ -2981,6 +3707,8 @@ function renderGame() {
         ctx.textAlign = 'center';
         ctx.fillText(text.text, text.x, text.y);
     }
+    ctx.restore();
+
     ctx.restore();
 }
 
@@ -2998,12 +3726,68 @@ function initGame() {
     canvas = document.getElementById('game-canvas');
     ctx = canvas.getContext('2d');
 
-    // 綁定按鈕監聽器
+    // 綁定事件監聽
     document.getElementById('btn-summon').addEventListener('click', () => summonTower());
+    let btnBarricade = document.getElementById('btn-barricade');
+    if (btnBarricade) btnBarricade.addEventListener('click', toggleBarricade);
     document.getElementById('btn-upgrade-summon-lvl').addEventListener('click', () => upgradeSummonLevel());
     document.getElementById('btn-unlock-slot').addEventListener('click', unlockNextSlot);
     document.getElementById('btn-merge-all').addEventListener('click', mergeAllBench);
     document.getElementById('btn-deploy-all').addEventListener('click', deployAllBench);
+    
+    let btnTrap = document.getElementById('btn-trap');
+    if (btnTrap) {
+        btnTrap.addEventListener('click', () => {
+            if (gameState.gold >= 300) {
+                placementMode = 'trap';
+                canvas.style.cursor = 'crosshair';
+                btnTrap.style.boxShadow = '0 0 15px #f97316';
+                damageTexts.push({ text: '請點擊路徑放置陷阱', x: canvas.width / 2, y: canvas.height / 2, color: '#f97316', alpha: 1.0, life: 60, scale: 1 });
+            } else {
+                damageTexts.push({ text: '金幣不足', x: canvas.width / 2, y: canvas.height / 2, color: '#ef4444', alpha: 1.0, life: 40, scale: 1 });
+            }
+        });
+    }
+
+    canvas.addEventListener('pointerdown', function(e) {
+        if (placementMode === 'trap') {
+            let rect = canvas.getBoundingClientRect();
+            let x = e.clientX - rect.left;
+            let y = e.clientY - rect.top;
+            
+            let onPath = false;
+            for(let i=0; i<PATH_POINTS.length-1; i++) {
+                let p1 = PATH_POINTS[i];
+                let p2 = PATH_POINTS[i+1];
+                let L2 = (p2.x - p1.x)*(p2.x - p1.x) + (p2.y - p1.y)*(p2.y - p1.y);
+                if(L2 == 0) continue;
+                let t = ((x - p1.x)*(p2.x - p1.x) + (y - p1.y)*(p2.y - p1.y)) / L2;
+                t = Math.max(0, Math.min(1, t));
+                let projX = p1.x + t*(p2.x - p1.x);
+                let projY = p1.y + t*(p2.y - p1.y);
+                let dist = Math.hypot(x - projX, y - projY);
+                if (dist < 20) {
+                    onPath = true;
+                    break;
+                }
+            }
+            
+            if (onPath && gameState.gold >= 300) {
+                addGold(-300);
+                if (typeof traps === 'undefined') window.traps = [];
+                traps.push({ x: x, y: y, type: 'spike', durability: 5 });
+                createExplosion(x, y, '#f97316', 10);
+            } else if (!onPath) {
+                damageTexts.push({ text: '只能放置在路徑上', x: x, y: y, color: '#ef4444', alpha: 1.0, life: 40, scale: 1 });
+            }
+            
+            placementMode = null;
+            canvas.style.cursor = 'default';
+            if (btnTrap) btnTrap.style.boxShadow = 'none';
+            return;
+        }
+    });
+
     document.getElementById('btn-talent-reroll').addEventListener('click', rerollTalents);
     document.getElementById('btn-next-wave').addEventListener('click', skipToNextWave);
     document.getElementById('btn-auto-wave').addEventListener('click', function() {
@@ -3134,6 +3918,29 @@ function restartGame() {
         upgradeSummonCost: 200,
         autoWave: false
     };
+    traps = [];
+    placementMode = null;
+    terrainNodes = [];
+    let availableSlots = [];
+    for(let i = 0; i < 12; i++) {
+        availableSlots.push(i);
+    }
+    for (let i = availableSlots.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [availableSlots[i], availableSlots[j]] = [availableSlots[j], availableSlots[i]];
+    }
+    for(let i=0; i<6; i++) {
+        let col = availableSlots[i] % 4;
+        let row = Math.floor(availableSlots[i] / 4);
+        let cx = GRID_START.x + col * (GRID_WIDTH + GRID_SPACING) + GRID_WIDTH / 2;
+        let cy = GRID_START.y + row * (GRID_HEIGHT + GRID_SPACING) + GRID_HEIGHT / 2;
+        terrainNodes.push({
+            x: cx,
+            y: cy,
+            type: i < 3 ? 'mana' : 'high_ground'
+        });
+    }
+
     // 重置天賦狀態
     rogueState = {
         factions: {
@@ -3214,9 +4021,15 @@ const TOWER_DATA = {
     cannon: { name: "砲台", rarity: "N", emoji: "💣", desc: "大範圍物理濺射傷害" },
     sniper: { name: "狙擊塔", rarity: "R", emoji: "🎯", desc: "極慢攻速，超高單體傷害與超遠射程" },
     poison: { name: "毒液塔", rarity: "R", emoji: "🧪", desc: "攻擊附帶中毒持續傷害 (DoT)" },
+    gatling: { name: "加特林", rarity: "R", emoji: "🔫", desc: "初始攻速低，攻擊同一目標可疊加攻速，最高 4 倍" },
+    druid: { name: "德魯伊", rarity: "R", emoji: "🌿", desc: "攻擊有機率使敵人定身 1.5 秒" },
     tesla: { name: "電磁塔", rarity: "SR", emoji: "🌩️", desc: "產生閃電鏈，在多名敵人之間彈跳" },
     frost: { name: "冰霜塔", rarity: "SR", emoji: "🧿", desc: "造成大範圍緩速，機率性完全凍結" },
-    blackhole: { name: "黑洞塔", rarity: "UR", emoji: "🌌", desc: "創造黑洞牽引敵人並造成毀滅性範圍傷害" }
+    flamethrower: { name: "火焰放射器", rarity: "SR", emoji: "🔥", desc: "錐形範圍傷害，無視護甲" },
+    aura: { name: "光環塔", rarity: "SR", emoji: "✨", desc: "不攻擊，為周圍 3x3 塔提供 30% 攻擊與攻速加成" },
+    blackhole: { name: "黑洞塔", rarity: "UR", emoji: "🌌", desc: "創造黑洞牽引敵人並造成毀滅性範圍傷害" },
+    railgun: { name: "軌道砲", rarity: "UR", emoji: "🛰️", desc: "發射貫穿全圖的直線光束造成巨量傷害" },
+    necromancer: { name: "死靈法師", rarity: "UR", emoji: "💀", desc: "範圍內有敵人死亡時，永久提升自身 1% 基礎攻擊力" }
 };
 
 const RARITY_COLORS = {
@@ -3228,6 +4041,15 @@ const RARITY_COLORS = {
 
 function renderShop() {
     document.getElementById('shop-coins').innerText = formatMoney(playerProfile.gameCoins);
+    let pityCounter = playerProfile.pityCounter || 0;
+    let pityDisplay = document.getElementById('pity-counter-display');
+    if (pityDisplay) {
+        if (pityCounter >= 20) {
+            pityDisplay.innerText = `幸運值：${pityCounter} / 20 (下次必出 UR)`;
+        } else {
+            pityDisplay.innerText = `幸運值：${pityCounter} / 20`;
+        }
+    }
     const shopList = document.getElementById('shop-list');
     const skillsList = document.getElementById('shop-skills-list');
     
@@ -3317,13 +4139,19 @@ function drawGacha() {
     }
     
     playerProfile.gameCoins -= 500;
+    
+    let pityCounter = playerProfile.pityCounter || 0;
+    pityCounter++;
+    
+    let isPity = pityCounter >= 20;
+    
     document.getElementById('shop-coins').innerText = formatMoney(playerProfile.gameCoins);
     
     const resultDiv = document.getElementById('gacha-result');
     
     let rollType = Math.random();
-    let isSkill = rollType > 0.85;
-    let isFaction = rollType < 0.35;
+    let isSkill = !isPity && rollType > 0.85;
+    let isFaction = !isPity && rollType < 0.35;
     
     if (isSkill) {
         let skillKeys = Object.keys(SKILL_DATA);
@@ -3344,6 +4172,7 @@ function drawGacha() {
                 <div style="color:${RARITY_COLORS[data.rarity]}; font-size:24px; font-weight:bold; margin-top:10px;">解鎖技能：${data.name}</div>
                 <div style="color:var(--text-secondary); font-size:14px; margin-top:10px;">${data.desc}</div>`;
         }
+        playerProfile.pityCounter = pityCounter;
     } else if (isFaction && typeof FACTION_DATA !== 'undefined') {
         let keys = Object.keys(FACTION_DATA);
         let picked = keys[Math.floor(Math.random() * keys.length)];
@@ -3361,12 +4190,28 @@ function drawGacha() {
             resultDiv.innerHTML = `<div style="font-size:48px; color:${data.color}">${data.icon}</div>
                 <div style="color:${data.color}; font-size:24px; font-weight:bold; margin-top:10px;">解鎖派系：${data.name}</div>`;
         }
+        playerProfile.pityCounter = pityCounter;
     } else {
         const r = Math.random() * 100;
         let pulledRarity = 'N';
-        if (r < 5) pulledRarity = 'UR';
-        else if (r < 20) pulledRarity = 'SR';
-        else if (r < 50) pulledRarity = 'R';
+        
+        if (isPity) {
+            pulledRarity = 'UR';
+            pityCounter = 0;
+        } else {
+            if (r < 5) {
+                pulledRarity = 'UR';
+                pityCounter = 0;
+            }
+            else if (r < 20) pulledRarity = 'SR';
+            else if (r < 50) pulledRarity = 'R';
+        }
+        
+        if (pulledRarity !== 'UR') {
+            playerProfile.pityCounter = pityCounter;
+        } else {
+            playerProfile.pityCounter = pityCounter;
+        }
         
         const pool = Object.keys(TOWER_DATA).filter(k => TOWER_DATA[k].rarity === pulledRarity);
         const picked = pool[Math.floor(Math.random() * pool.length)];
@@ -3389,6 +4234,7 @@ function drawGacha() {
     }
     saveProfile();
     document.getElementById('shop-coins').innerText = formatMoney(playerProfile.gameCoins);
+    renderShop();
 }
 
 function renderRelics() {
@@ -3446,6 +4292,47 @@ function renderBackpack() {
         `;
         grid.appendChild(item);
     });
+
+    const equipGrid = document.getElementById('backpack-equip-grid');
+    if (equipGrid) {
+        equipGrid.innerHTML = '';
+        if (!playerProfile.inventory) playerProfile.inventory = [];
+        playerProfile.inventory.forEach((itemKey, index) => {
+            const data = EQUIPMENT_DATA[itemKey];
+            if (!data) return;
+            const item = document.createElement('div');
+            item.className = 'backpack-item';
+            item.style.background = 'rgba(255,255,255,0.05)';
+            item.style.padding = '15px';
+            item.style.borderRadius = '10px';
+            item.style.textAlign = 'center';
+            item.style.cursor = 'pointer';
+            item.style.border = '1px solid rgba(16, 185, 129, 0.5)';
+            item.innerHTML = `
+                <div style="font-size: 36px; margin-bottom: 5px;">${data.icon}</div>
+                <div style="font-weight: bold; color: #10b981;">${data.name}</div>
+                <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 10px;">${data.desc}</div>
+                <div style="font-size: 12px; color: #facc15; margin-top: 5px; font-weight: bold;">點擊裝備到場上</div>
+            `;
+            item.onclick = () => {
+                let validTowers = fieldSlots.filter(t => t !== null && !t.equipment);
+                if (validTowers.length === 0) {
+                    alert('場上沒有空閒的塔可供裝備！');
+                    return;
+                }
+                let randomTower = validTowers[Math.floor(Math.random() * validTowers.length)];
+                randomTower.equipment = itemKey;
+                playerProfile.inventory.splice(index, 1);
+                saveProfile();
+                renderBackpack();
+                alert(`已將 ${data.name} 裝備到 ${randomTower.name} 上！`);
+            };
+            equipGrid.appendChild(item);
+        });
+        if (playerProfile.inventory.length === 0) {
+            equipGrid.innerHTML = '<div style="color: var(--text-secondary); grid-column: 1 / -1; text-align: center; padding: 20px;">背包中沒有裝備</div>';
+        }
+    }
 
     // Remove old duplicate skill grids if they exist
     document.querySelectorAll('#backpack-skills-title').forEach(el => el.remove());
@@ -3586,7 +4473,8 @@ function renderEncyclopedia() {
             { name: '衝刺怪', color: '#10b981', desc: '跑速快 (1.65倍)，血量較低 (55%)。' },
             { name: '重甲怪', color: '#94a3b8', desc: '跑速慢 (0.5倍)，血量極高 (230%)。' },
             { name: '分裂怪', color: '#ec4899', desc: '血量中等 (135%) ，死後會分裂產生子怪。' },
-            { name: 'Boss 怪', color: '#ef4444', desc: '每 10 波出現一次，血量極厚，會隨波數大幅成長。' }
+            { name: 'Boss 怪', color: '#ef4444', desc: '每 10 波出現一次，血量極厚，會隨波數大幅成長。' },
+            { name: '🛡️ 絕望裝甲 (Wave 20+)', color: '#facc15', desc: '從第 20 波起，所有怪物都會具備額外裝甲，固定減免受到的傷害。無法破防只會造成 1 點傷害！' }
         ];
         
         enemiesData.forEach(e => {
@@ -3618,9 +4506,103 @@ function renderEncyclopedia() {
             card.innerHTML = `
                 <div style="font-size: 32px;">${isOwned ? data.icon : '?'}</div>
                 <div style="font-weight: bold; color: ${isOwned ? data.color : '#fff'};">${isOwned ? data.name : '未知派系'}</div>
-                <div style="font-size: 12px; color: var(--text-secondary); margin-top: 5px;">${isOwned ? data.baseDesc : '尚待解鎖'}</div>
+                <div style="font-size: 12px; color: var(--text-secondary); margin-top: 5px;">${isOwned ? data.desc : '尚待解鎖'}</div>
             `;
             facList.appendChild(card);
+        });
+    }
+
+    // 5. 超級融合塔 (Super Towers)
+    const superTowersList = document.getElementById('ency-supertowers');
+    if (superTowersList) {
+        superTowersList.innerHTML = '';
+        const superTowersData = [
+            { name: '魔能遊俠', emoji: '🏹✨', color: '#8b5cf6', desc: '【合成配方】：同等級的 弓箭塔 + 魔法塔<br><br>射出多重追蹤魔法箭，並具有彈跳效果。超級塔之間可繼續無限合成升級！' }
+        ];
+
+        superTowersData.forEach(f => {
+            const card = document.createElement('div');
+            card.style.background = 'rgba(255,255,255,0.05)';
+            card.style.padding = '15px';
+            card.style.borderRadius = '10px';
+            
+            let titleStyle = f.color.includes('gradient') 
+                ? `background: ${f.color}; -webkit-background-clip: text; -webkit-text-fill-color: transparent;` 
+                : `color: ${f.color};`;
+                
+            card.innerHTML = `
+                <div style="font-size: 32px;">${f.emoji}</div>
+                <div style="font-weight: bold; ${titleStyle} font-size: 18px; margin-bottom: 5px;">${f.name}</div>
+                <div style="font-size: 12px; color: var(--text-secondary);">${f.desc}</div>
+            `;
+            superTowersList.appendChild(card);
+        });
+    }
+
+    // 6. 派系融合天賦 (Fusion Talents)
+    const fusionList = document.getElementById('ency-fusions');
+    if (fusionList) {
+        fusionList.innerHTML = '';
+        const fusionsData = [];
+
+        if (typeof rogueState !== 'undefined' && rogueState.fusions) {
+            Object.values(rogueState.fusions).forEach(ft => {
+                fusionsData.push({
+                    name: ft.name,
+                    emoji: ft.icon,
+                    color: ft.color,
+                    desc: ft.desc
+                });
+            });
+        }
+        
+        fusionsData.forEach(f => {
+            const card = document.createElement('div');
+            card.style.background = 'rgba(255,255,255,0.05)';
+            card.style.padding = '15px';
+            card.style.borderRadius = '10px';
+            
+            let titleStyle = f.color.includes('gradient') 
+                ? `background: ${f.color}; -webkit-background-clip: text; -webkit-text-fill-color: transparent;` 
+                : `color: ${f.color};`;
+                
+            card.innerHTML = `
+                <div style="font-size: 32px;">${f.emoji}</div>
+                <div style="font-weight: bold; ${titleStyle} font-size: 18px; margin-bottom: 5px;">${f.name}</div>
+                <div style="font-size: 12px; color: var(--text-secondary);">${f.desc}</div>
+            `;
+            fusionList.appendChild(card);
+        });
+    }
+
+    // 7. 裝備圖鑑 (Equipment)
+    const equipmentList = document.getElementById('ency-equipment');
+    if (equipmentList) {
+        equipmentList.innerHTML = '';
+        const equipmentData = [];
+        if (typeof EQUIPMENT_DATA !== 'undefined') {
+            Object.values(EQUIPMENT_DATA).forEach(eq => {
+                equipmentData.push({
+                    name: eq.name,
+                    icon: eq.icon,
+                    desc: eq.desc
+                });
+            });
+        }
+        
+        equipmentData.forEach(eq => {
+            const card = document.createElement('div');
+            card.style.background = 'rgba(255,255,255,0.05)';
+            card.style.padding = '15px';
+            card.style.borderRadius = '10px';
+            card.style.border = '1px solid rgba(16, 185, 129, 0.5)';
+            
+            card.innerHTML = `
+                <div style="font-size: 32px;">${eq.icon}</div>
+                <div style="font-weight: bold; color: #10b981; font-size: 18px; margin-bottom: 5px;">${eq.name}</div>
+                <div style="font-size: 12px; color: var(--text-secondary);">${eq.desc}</div>
+            `;
+            equipmentList.appendChild(card);
         });
     }
 }
@@ -3732,10 +4714,11 @@ function settleImmediately() {
 // ==========================================
 let tutorialStep = 1;
 const tutorialTexts = [
-    "這是一款融合防禦塔的抽卡塔防遊戲。<br><br>戰鬥中，你可以花費金幣召喚防禦塔。只要<b>拖曳兩座等級與種類相同的防禦塔</b>，就可以將其【合成】升級！",
-    "打倒敵人賺取金幣，每兩波結束可以選擇【派系天賦】。<br><br>特定派系升到滿級，並且擁有對應的前置派系，即可解鎖極其強大的<b>【融合技】</b>！",
-    "退出戰鬥後，可以使用獲得的「代幣」去<b>商店抽取各種全新防禦塔</b>，並在背包中挑選想要上陣的防禦塔。",
-    "<b>遊戲目標：</b><br><br>成功抵禦 <b>30 波</b> 敵人的進攻，擊殺最終 Boss 贏得勝利！<br><br>準備好就開始吧！"
+    "<b>步驟 1：無限合成</b><br><br>這是一款無限擴充的放置塔防遊戲。拖曳兩座等級與種類相同的防禦塔，即可無限合成升級，沒有等級上限！",
+    "<b>步驟 2：裝備系統</b><br><br>擊敗強大的 Boss 會掉落裝備。進入「背包」為防禦塔裝上裝備，例如火焰弓或狂戰戒指，獲得強大屬性加成！",
+    "<b>步驟 3：地形與陷阱</b><br><br>戰場上散佈著「充能法陣」與「高地」等特殊地形，將塔放置其上能獲得攻速與射程提升。此外，你也能在路上佈置尖刺陷阱！",
+    "<b>步驟 4：陣營羈絆</b><br><br>當場上同時存在 3 座魔法塔，或 4 座弓箭塔時，將啟動強大的陣營羈絆效果，為同類防禦塔帶來巨幅增益！",
+    "<b>步驟 5：裝甲與轉生</b><br><br>從第 20 波起，敵人將擁有能抵禦低星塔攻擊的「裝甲」。若遇到瓶頸，可使用「轉生」系統獲取【時空寶石】，解鎖神話科技，挑戰無限波次！"
 ];
 
 function openTutorial() {
@@ -3753,7 +4736,7 @@ function closeTutorial() {
 }
 
 function nextTutorialStep() {
-    if (tutorialStep < 4) {
+    if (tutorialStep < tutorialTexts.length) {
         tutorialStep++;
         updateTutorialUI();
     } else {
@@ -3762,11 +4745,11 @@ function nextTutorialStep() {
 }
 
 function updateTutorialUI() {
-    document.getElementById('tutorial-title').innerText = `🎓 新手教學 (${tutorialStep}/4)`;
+    document.getElementById('tutorial-title').innerText = `🎓 新手教學 (${tutorialStep}/${tutorialTexts.length})`;
     document.getElementById('tutorial-content').innerHTML = tutorialTexts[tutorialStep - 1];
     
     let btn = document.getElementById('tutorial-next-btn');
-    if (tutorialStep === 4) {
+    if (tutorialStep === tutorialTexts.length) {
         btn.innerText = '開始遊戲！';
     } else {
         btn.innerText = '下一步 ▶';
@@ -3824,11 +4807,14 @@ function renderLevelSelect(mode = 'campaign') {
     if (!container) return;
     container.innerHTML = '';
     
-    let levelsToRender = mode === 'campaign' ? [1, 2] : [3];
+    let levelsToRender = mode === 'campaign' ? [1, 2, 4, 5] : [3];
     
     for (let i of levelsToRender) {
         let conf = LEVEL_CONFIG[i];
-        let isUnlocked = (i === 1 || i === 3) || (playerProfile.highestLevelCleared >= (i - 1));
+        let reqLevel = i - 1;
+        if (i === 4) reqLevel = 2;
+        if (i === 5) reqLevel = 4;
+        let isUnlocked = (i === 1 || i === 3) || (playerProfile.highestLevelCleared >= reqLevel);
         
         let card = document.createElement('div');
         card.style.width = '300px';
@@ -3945,3 +4931,131 @@ window.upgradeTech = function(key) {
         renderTechTree();
     }
 }
+
+
+window.toggleBarricade = function() {
+    if (gameState.level !== 5) return;
+    if (gameState.gold >= 500) {
+        gameState.gold -= 500;
+        if(typeof updateUI === 'function') updateUI();
+        PATH_POINTS = LEVEL_CONFIG[5].pathLong;
+        let btn = document.getElementById('btn-barricade');
+        if (btn) {
+            btn.innerHTML = '<span class=' + chr(34) + 'btn-title' + chr(34) + '>已設置</span><span class=' + chr(34) + 'btn-cost' + chr(34) + '>MAX</span>';
+            btn.disabled = true;
+            btn.style.opacity = '0.5';
+        }
+    } else {
+        let btn = document.getElementById('btn-barricade');
+        if (btn) {
+            let orig = btn.style.borderColor;
+            btn.style.borderColor = 'red';
+            setTimeout(() => btn.style.borderColor = orig, 300);
+        }
+    }
+};
+
+// ==========================================
+// 14. 轉生與神話科技 (Prestige System)
+// ==========================================
+
+const MYTHIC_TECH_DATA = {
+    chainLightning: { name: '⚡ 全場連鎖閃電', desc: '攻擊時有 10% 機率觸發神話連鎖閃電，造成 5 倍傷害並彈射 5 次。', max: 1, baseCost: 100 },
+    attackSpeedAwaken: { name: '🌪️ 攻速覺醒', desc: '永久提升全場防禦塔攻擊速度 3 倍。', max: 1, baseCost: 150 }
+};
+
+window.renderPrestige = function() {
+    let gemsDisplay = document.getElementById('time-gems-display');
+    if (gemsDisplay) gemsDisplay.innerText = playerProfile.timeGems;
+
+    let preview = document.getElementById('prestige-preview');
+    if (preview) preview.innerText = calculatePrestigeGems();
+
+    let container = document.getElementById('mythic-tech-list');
+    if (!container) return;
+    container.innerHTML = '';
+
+    if (!playerProfile.mythicUpgrades) {
+        playerProfile.mythicUpgrades = { chainLightning: 0, attackSpeedAwaken: 0 };
+    }
+
+    Object.keys(MYTHIC_TECH_DATA).forEach(key => {
+        let data = MYTHIC_TECH_DATA[key];
+        let currentLevel = playerProfile.mythicUpgrades[key] || 0;
+        let isMax = currentLevel >= data.max;
+        let cost = data.baseCost;
+
+        let card = document.createElement('div');
+        card.style.background = 'rgba(217, 70, 239, 0.1)';
+        card.style.border = '1px solid rgba(217, 70, 239, 0.4)';
+        card.style.borderRadius = '12px';
+        card.style.padding = '20px';
+        card.style.display = 'flex';
+        card.style.justifyContent = 'space-between';
+        card.style.alignItems = 'center';
+
+        card.innerHTML = `
+            <div style="flex: 1;">
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+                    <h3 style="color: #fdf4ff; font-size: 20px; margin: 0;">${data.name}</h3>
+                    <span style="background: ${isMax ? '#d946ef' : '#333'}; color: ${isMax ? '#000' : '#fff'}; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;">
+                        ${isMax ? '已覺醒 (MAX)' : '未解鎖'}
+                    </span>
+                </div>
+                <p style="color: #cbd5e1; font-size: 14px; margin: 0;">${data.desc}</p>
+            </div>
+            <button class="action-btn ${isMax ? '' : 'glow-btn'}" 
+                onclick="upgradeMythic('${key}')" 
+                ${(isMax || playerProfile.timeGems < cost) ? 'disabled' : ''} 
+                style="min-width: 150px; padding: 12px; border-color: ${isMax ? '#333' : 'rgba(217, 70, 239, 0.5)'}; color: ${isMax ? '#666' : '#fdf4ff'};">
+                ${isMax ? '已覺醒' : '覺醒 (💎 ' + cost + ')'}
+            </button>
+        `;
+        container.appendChild(card);
+    });
+};
+
+window.upgradeMythic = function(key) {
+    let data = MYTHIC_TECH_DATA[key];
+    let currentLevel = playerProfile.mythicUpgrades[key] || 0;
+    
+    if (playerProfile.timeGems >= data.baseCost && currentLevel < data.max) {
+        playerProfile.timeGems -= data.baseCost;
+        playerProfile.mythicUpgrades[key] = currentLevel + 1;
+        saveProfile();
+        renderPrestige();
+    }
+};
+
+window.calculatePrestigeGems = function() {
+    if (gameState.wave < 10) return 0;
+    let baseGems = Math.floor(gameState.level * 10 + gameState.wave * 2);
+    if (gameState.wave >= 20) {
+        let exponent = Math.floor((gameState.wave - 20) / 10);
+        baseGems *= Math.pow(10, exponent);
+    }
+    return baseGems;
+};
+
+window.doPrestige = function() {
+    let gems = calculatePrestigeGems();
+    if (gems <= 0) {
+        alert("目前波數過低，無法獲得時空寶石。");
+        return;
+    }
+    if (confirm('警告：確定要進行轉生嗎？\n這將重置您的所有金幣、防禦塔、派系等級與全域升級，並根據當前進度給予您 ' + gems + ' 顆時空寶石。')) {
+        playerProfile.timeGems += gems;
+        
+        playerProfile.gameCoins = 0;
+        playerProfile.ownedTowers = ['archer', 'magic', 'cannon'];
+        playerProfile.ownedFactions = ['fury', 'swift', 'frost', 'greed', 'fate'];
+        playerProfile.globalUpgrades = {
+            archer: 1, magic: 1, cannon: 1,
+            sniper: 1, poison: 1, tesla: 1, frost: 1, blackhole: 1
+        };
+        
+        saveProfile();
+        alert('轉生成功！獲得 ' + gems + ' 顆時空寶石。');
+        location.reload();
+    }
+};
